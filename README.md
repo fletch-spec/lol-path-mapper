@@ -11,8 +11,7 @@ While a replay is playing, this tool polls the local LoL replay API to collect p
 - Python 3.x
 - `pip install -r requirements.txt`
 - A Summoner's Rift map image at `.dev/summoners_rift.png` (8192×8192)
-- League of Legends client with the replay API enabled:
-  - Add `EnableReplayApi=1` under `[General]` in your `game.cfg`
+- League of Legends client with the replay API enabled (see [Setup](#setup))
 
 ## Setup
 
@@ -21,6 +20,25 @@ pip install -r requirements.txt
 ```
 
 Place your `summoners_rift.png` map image in the `.dev/` directory.
+
+### Enable the Replay API
+
+The LoL client does not expose the replay API by default. To enable it:
+
+1. Close the League of Legends client completely.
+2. Open `game.cfg`, located at:
+   ```
+   C:\Riot Games\League of Legends\Config\game.cfg
+   ```
+3. Find the `[General]` section and add (or update) this line:
+   ```ini
+   [General]
+   EnableReplayApi=1
+   ```
+4. Save the file and relaunch the client.
+
+> If the API is not enabled, the tool will detect the game but print:
+> `Game detected but Replay API not enabled.`
 
 ## Usage
 
