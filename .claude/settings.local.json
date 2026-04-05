@@ -17,7 +17,10 @@
       "Bash(python main.py --from-file .dev/cache/positions_Malzahar.json --output pathing.png)",
       "Bash(python main.py --from-file .dev/cache/positions_Malzahar.json --rofl \".dev/OC1-697009636.rofl\")",
       "Bash(du -sh /c/dev/league-of-legends/*.png)",
-      "Bash(python3 -c \"from PIL import Image; img = Image.open\\(''C:/dev/league-of-legends/.dev/summoners_rift.png''\\); print\\(img.size, img.mode\\)\")"
+      "Bash(python3 -c \"from PIL import Image; img = Image.open\\(''C:/dev/league-of-legends/.dev/summoners_rift.png''\\); print\\(img.size, img.mode\\)\")",
+      "Bash(python3 -c \"import json; data = json.load\\(open\\(''/c/dev/league-of-legends/.dev/cache/positions_Ahri.json''\\)\\); print\\(''Format:'', len\\(data\\), ''samples''\\); print\\(''First 5:'', data[:5]\\); print\\(''Last 5:'', data[-5:]\\)\")",
+      "Bash(python3:*)",
+      "Bash(find /c/dev/league-of-legends -type f \\\\\\(-name README* -o -name *.md -o -name .gitignore \\\\\\))"
     ]
   }
 }

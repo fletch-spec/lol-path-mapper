@@ -130,7 +130,6 @@ def collect_positions(champion_name, speed=8, poll_interval=0.1, summoner_name=N
 
     while True:
         try:
-            # Single render call gets both position and (optionally) game time
             render = get_render()
             pb = get_playback()
             game_time = pb["time"]
@@ -156,6 +155,7 @@ def collect_positions(champion_name, speed=8, poll_interval=0.1, summoner_name=N
     print(f"\nDone: {len(positions)} samples collected.\n")
     set_playback(paused=True)
     return positions
+
 
 
 def save_positions(positions, champion_name):
