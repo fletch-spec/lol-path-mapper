@@ -20,7 +20,8 @@
       "Bash(python3 -c \"from PIL import Image; img = Image.open\\(''C:/dev/league-of-legends/.dev/summoners_rift.png''\\); print\\(img.size, img.mode\\)\")",
       "Bash(python3 -c \"import json; data = json.load\\(open\\(''/c/dev/league-of-legends/.dev/cache/positions_Ahri.json''\\)\\); print\\(''Format:'', len\\(data\\), ''samples''\\); print\\(''First 5:'', data[:5]\\); print\\(''Last 5:'', data[-5:]\\)\")",
       "Bash(python3:*)",
-      "Bash(find /c/dev/league-of-legends -type f \\\\\\(-name README* -o -name *.md -o -name .gitignore \\\\\\))"
+      "Bash(find /c/dev/league-of-legends -type f \\\\\\(-name README* -o -name *.md -o -name .gitignore \\\\\\))",
+      "Bash(python analyze.py .dev/cache/timeline_OC1_697009636.json --champion Malzahar)"
     ]
   }
 }

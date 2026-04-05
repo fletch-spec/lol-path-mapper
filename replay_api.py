@@ -1,3 +1,17 @@
+"""
+LoL replay API client.
+
+Wraps the local League of Legends replay API at https://127.0.0.1:2999.
+The API is only available while a replay is open in the client and requires
+'EnableReplayApi=1' in game.cfg under [General].
+
+Key endpoints used:
+  /liveclientdata/allgamedata  — confirms a game is loaded (no special config needed)
+  /liveclientdata/playerlist   — full roster with champion names and team assignments
+  /replay/playback             — controls and reads playback state (time, speed, paused)
+  /replay/render               — controls camera and reads cameraPosition (x, z = map x, y)
+"""
+
 import json
 import os
 import time
@@ -5,6 +19,7 @@ import time
 import requests
 import urllib3
 
+# Suppress the self-signed certificate warning from the local API
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 BASE_URL = "https://127.0.0.1:2999"

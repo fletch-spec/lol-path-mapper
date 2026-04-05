@@ -1,3 +1,17 @@
+"""
+Ward event extraction from Riot Match API v5 timeline JSON.
+
+The timeline is a series of 60-second frames, each containing:
+  - participantFrames: per-player stats snapshot (gold, CS, XP, position)
+  - events: discrete game events (WARD_PLACED, CHAMPION_KILL, BUILDING_KILL, etc.)
+
+WARD_PLACED events in API v5 include an exact position field; this module
+reads that directly and falls back to the creator's frame-snapshot position
+for older timeline data that predates the position field.
+
+Participants 1–5 are on the blue (ORDER) team; 6–10 are red (CHAOS).
+"""
+
 import glob
 import json
 import os

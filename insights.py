@@ -1,7 +1,13 @@
 """
-Analysis functions for match insights.
-All functions operate on positions [(game_time_sec, x, y)] and/or timeline dicts.
-No rendering — pure computation.
+Match insight computations.
+
+All functions are pure data transformations — no rendering, no file I/O.
+
+Input types:
+  positions  — list of (game_time_sec, x, y) tuples collected by replay_api.py
+  timeline   — Riot Match API v5 timeline dict (loaded from timeline_*.json)
+  participant_id — integer 1–10 (1–5 = blue/ORDER, 6–10 = red/CHAOS)
+  team       — "ORDER" (blue) or "CHAOS" (red)
 """
 
 import math
@@ -230,6 +236,8 @@ def lane_aggression(positions, team):
     own_dist   = math.hypot(avg_x - own_base[0],   avg_y - own_base[1])
     enemy_dist = math.hypot(avg_x - enemy_base[0],  avg_y - enemy_base[1])
     total      = own_dist + enemy_dist
+    # Score = fraction of the base-to-base distance that the player was away from their own base.
+    # 0 = at own base, 50 = equidistant (river), 100 = at enemy base.
     score      = int(own_dist / total * 100) if total > 0 else 50
 
     return {
@@ -239,6 +247,100 @@ def lane_aggression(positions, team):
         "avg_pos": (avg_x, avg_y),
         "laning_positions": laning,
     }
+
+
+def player_event_times(timeline, participant_id, positions, team):
+    """Exact timestamps (minutes) for each key event type for the given player.
+
+    Returns a dict of lists used by the activity chart to plot events on the timeline.
+    """
+    events = _all_events(timeline)
+    recall_secs = detect_recalls(positions, team) if positions else []
+    return {
+        "kills":      [e["timestamp"] / 60000 for e in events
+                       if e["type"] == "CHAMPION_KILL" and e.get("killerId") == participant_id],
+        "deaths":     [e["timestamp"] / 60000 for e in events
+                       if e["type"] == "CHAMPION_KILL" and e.get("victimId") == participant_id],
+        "assists":    [e["timestamp"] / 60000 for e in events
+                       if e["type"] == "CHAMPION_KILL"
+                       and participant_id in e.get("assistingParticipantIds", [])],
+        "towers":     [e["timestamp"] / 60000 for e in events
+                       if e["type"] == "BUILDING_KILL"
+                       and e.get("buildingType") == "TOWER_BUILDING"
+                       and (e.get("killerId") == participant_id
+                            or participant_id in e.get("assistingParticipantIds", []))],
+        "objectives": [e["timestamp"] / 60000 for e in events
+                       if e["type"] == "ELITE_MONSTER_KILL"
+                       and (e.get("killerId") == participant_id
+                            or participant_id in e.get("assistingParticipantIds", []))],
+        "recalls":    [t / 60 for t in recall_secs],
+    }
+
+
+def per_15s_breakdown(timeline, participant_id, positions, team):
+    """15-second resolution activity classification.
+
+    Improves on the 60s-frame limit by using exact event timestamps for Fighting
+    and position data for Base detection. Farming/Roaming falls back to whether
+    the enclosing 60s frame gained CS (best available granularity for that stat).
+
+    Returns [{time_min, activity}] — 4× more buckets than per_minute_breakdown.
+    """
+    frames = timeline["info"]["frames"]
+    events = _all_events(timeline)
+    base   = BLUE_BASE if team == "ORDER" else RED_BASE
+
+    if not frames:
+        return []
+
+    # CS data is only available at 60s frame boundaries, so we pre-mark which
+    # whole minutes saw any CS gain. All four 15s buckets within that minute
+    # inherit the "Farming" label unless a fight or base event overrides them.
+    farming_minutes = set()
+    prev_cs = 0
+    for frame in frames[1:]:
+        pf = frame["participantFrames"].get(str(participant_id), {})
+        cs = pf.get("minionsKilled", 0) + pf.get("jungleMinionsKilled", 0)
+        if cs > prev_cs:
+            farming_minutes.add(int(frame["timestamp"] / 60000))
+        prev_cs = cs
+
+    duration_sec = frames[-1]["timestamp"] / 1000.0
+    WINDOW = 15  # seconds per bucket
+    result = []
+    t = 0.0
+
+    while t < duration_sec:
+        t_end   = t + WINDOW
+        t_ms    = t * 1000
+        t_end_ms = t_end * 1000
+
+        fought = any(
+            e["type"] == "CHAMPION_KILL"
+            and t_ms < e["timestamp"] <= t_end_ms
+            and (e.get("killerId") == participant_id
+                 or e.get("victimId") == participant_id
+                 or participant_id in e.get("assistingParticipantIds", []))
+            for e in events
+        )
+
+        pos = get_position_at_time(positions, (t + t_end) / 2) if positions else None
+        in_base = pos and math.hypot(pos[0] - base[0], pos[1] - base[1]) < BASE_RADIUS
+        farming  = int(t / 60) in farming_minutes
+
+        if fought:
+            activity = "Fighting"
+        elif in_base:
+            activity = "Base"
+        elif farming:
+            activity = "Farming"
+        else:
+            activity = "Roaming"
+
+        result.append({"time_min": t / 60, "activity": activity})
+        t += WINDOW
+
+    return result
 
 
 # ── team fight clusters ───────────────────────────────────────────────────────
@@ -270,15 +372,18 @@ def team_fight_clusters(timeline, time_window_sec=45, distance=3000, min_kills=2
     for i in range(len(kills)):
         if used[i]:
             continue
+        # Start a new candidate cluster from this kill
         group = [i]
         used[i] = True
 
         for j in range(i + 1, len(kills)):
             if used[j]:
                 continue
-            # Sorted by time — once gap exceeds window no further candidates exist
+            # Kills are sorted by time, so once the gap exceeds the window
+            # no later kill can ever join this cluster — early exit is safe
             if kills[j]["time"] - kills[group[0]]["time"] > time_window_sec:
                 break
+            # Recompute the running centroid and check spatial proximity
             cx = sum(kills[k]["x"] for k in group) / len(group)
             cy = sum(kills[k]["y"] for k in group) / len(group)
             if math.hypot(kills[j]["x"] - cx, kills[j]["y"] - cy) <= distance:
@@ -291,6 +396,7 @@ def team_fight_clusters(timeline, time_window_sec=45, distance=3000, min_kills=2
         members    = [kills[k] for k in group]
         cx         = sum(m["x"] for m in members) / len(members)
         cy         = sum(m["y"] for m in members) / len(members)
+        # Victims with IDs 1-5 are blue-team players; 6-10 are red-team
         blue_dead  = sum(1 for m in members if 1 <= m["victim"] <= 5)
         red_dead   = sum(1 for m in members if 6 <= m["victim"] <= 10)
 
@@ -300,6 +406,7 @@ def team_fight_clusters(timeline, time_window_sec=45, distance=3000, min_kills=2
             "size":       len(group),
             "blue_deaths": blue_dead,
             "red_deaths":  red_dead,
+            # The team with fewer deaths won the exchange
             "winner":     "blue" if red_dead > blue_dead else "red" if blue_dead > red_dead else "even",
             "start_min":  round(members[0]["time"] / 60, 1),
             "duration_sec": members[-1]["time"] - members[0]["time"],

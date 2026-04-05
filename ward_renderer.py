@@ -1,16 +1,31 @@
+"""
+Ward placement renderers.
+
+Two outputs:
+  Ward map    — a dot at every ward placement location, blue or red by team.
+  Vision heatmap — accumulated vision circles showing total map coverage.
+
+Both render at the full map resolution then downscale, matching the approach
+used by path_renderer. game_to_pixel() is imported to keep coordinate
+transforms consistent across the project.
+"""
+
 from PIL import Image, ImageDraw, ImageFilter
 
 from path_renderer import GAME_X_MAX, GAME_X_MIN, game_to_pixel
 
-WARD_VISION_RADIUS = 900  # game units (approximate for most ward types)
+# Approximate vision radius for standard wards (Control Wards are ~900, Stealth ~900)
+WARD_VISION_RADIUS = 900  # game units
 
-_BLUE_DOT = (30, 144, 255, 210)
-_RED_DOT = (220, 50, 50, 210)
-_BLUE_VISION = (30, 100, 220, 22)
-_RED_VISION = (220, 60, 60, 22)
+# RGBA colours for the two rendering modes
+_BLUE_DOT    = (30, 144, 255, 210)   # solid dot on the ward map
+_RED_DOT     = (220, 50,  50,  210)
+_BLUE_VISION = (30, 100, 220, 22)    # low-alpha fill that accumulates in the heatmap
+_RED_VISION  = (220, 60,  60,  22)
 
 
 def _color(creator_id, dot=True):
+    """Return the appropriate RGBA colour for a ward event based on team (1-5 = blue)."""
     if dot:
         return _BLUE_DOT if creator_id <= 5 else _RED_DOT
     return _BLUE_VISION if creator_id <= 5 else _RED_VISION
@@ -80,6 +95,6 @@ def _save(img, output_path, downscale):
         w, h = img.size
         out_w, out_h = w // downscale, h // downscale
         img = img.resize((out_w, out_h), Image.LANCZOS)
-        print(f"Downscaled {w}x{h} → {out_w}x{out_h}")
+        print(f"Downscaled {w}x{h} -> {out_w}x{out_h}")
     img.convert("RGB").save(output_path, optimize=True)
     print(f"Saved -> {output_path}")

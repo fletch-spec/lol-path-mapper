@@ -10,7 +10,7 @@ GAME_Y_MIN, GAME_Y_MAX = -120, 14980
 RECALL_THRESHOLD = 3000
 
 # This map image's playfield sits higher than the standard bounds predict.
-# Empirically the path renders ~140px too low at 2048px output; correct by
+# Empirically the path renders ~180px too low at 2048px output; correct by
 # shifting up proportionally at any resolution.
 _MAP_Y_UP = 140 / 2048  # fraction of image height to subtract from py
 

@@ -1,3 +1,21 @@
+"""
+Entry point: record a champion's path from a live replay and render it.
+
+Workflow:
+  1. Wait for the LoL client to have an active replay loaded.
+  2. List all players; let the user pick one (or pass --player on the CLI).
+  3. Attach the replay camera to the selected champion and play through at speed.
+  4. Save the collected (game_time, x, y) positions to .dev/cache/positions_<champion>.json.
+  5. Render a blue→red gradient path overlay onto the Summoner's Rift map.
+  6. If --timeline is provided, also render a ward placement dot map.
+
+Usage:
+    python main.py
+    python main.py --player Ahri --speed 16
+    python main.py --player 3 --downscale 1
+    python main.py --player Ahri --timeline .dev/cache/timeline_OC1_697009636.json
+"""
+
 import argparse
 import os
 import re
@@ -12,7 +30,9 @@ OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "outputs")
 
 
 def make_output_path(summoner, champion):
+    """Build a sanitized output path: outputs/<summoner>_<champion>.png."""
     def clean(s):
+        # Replace any character that isn't alphanumeric, underscore, or hyphen
         return re.sub(r"[^\w\-]", "_", s).strip("_")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     return os.path.join(OUTPUT_DIR, f"{clean(summoner)}_{clean(champion)}.png")
@@ -29,6 +49,7 @@ def select_player(players, player_arg):
         print(f"  {i:2d}. {display:<25s} {champ:<15s} ({team})")
 
     if player_arg:
+        # Try numeric index first, then substring match on champion / summoner name
         try:
             idx = int(player_arg) - 1
             if 0 <= idx < len(players):

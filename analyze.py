@@ -33,6 +33,8 @@ from insights import (
     activity_stats,
     lane_aggression,
     per_minute_breakdown,
+    per_15s_breakdown,
+    player_event_times,
     team_fight_clusters,
     xp_gain_locations,
 )
@@ -111,8 +113,10 @@ def main():
     prefix = os.path.join(OUTPUT_DIR, f"{match_id}_{champion_name}")
 
     # ── Stats ──────────────────────────────────────────────────────────────────
-    stats = activity_stats(positions or [], timeline, participant_id, team)
-    pm    = per_minute_breakdown(timeline, participant_id, positions or [], team)
+    stats    = activity_stats(positions or [], timeline, participant_id, team)
+    pm       = per_minute_breakdown(timeline, participant_id, positions or [], team)
+    pm_15s   = per_15s_breakdown(timeline, participant_id, positions or [], team)
+    ev_times = player_event_times(timeline, participant_id, positions or [], team)
 
     mins_str = f"{int(stats['duration_min'])}:{int(stats['duration_sec'] % 60):02d}"
     print(f"\n{'='*62}")
@@ -132,7 +136,8 @@ def main():
 
     # ── Activity chart ─────────────────────────────────────────────────────────
     activity_out = f"{prefix}_activity.png"
-    render_activity_chart(stats, pm, champion_name, activity_out)
+    render_activity_chart(stats, pm, champion_name, activity_out,
+                          events_at_time=ev_times, per_15s=pm_15s)
 
     # ── XP heatmap ─────────────────────────────────────────────────────────────
     if positions:
@@ -143,12 +148,36 @@ def main():
 
     # ── Team fight clusters ────────────────────────────────────────────────────
     fights = team_fight_clusters(timeline)
-    print(f"\nTeam fights detected: {len(fights)}")
-    for fight in fights:
-        w = fight["winner"].capitalize()
+    tf_list = [f for f in fights if f["size"] >= 4]
+    sk_list = [f for f in fights if f["size"] < 4]
+    print(f"\nTeam fights ({len(tf_list)}) + Skirmishes ({len(sk_list)}) = {len(fights)} total")
+
+    def _fight_row(i, fight):
+        mins = int(fight["start_min"])
+        secs = int((fight["start_min"] - mins) * 60)
         bd, rd = fight["blue_deaths"], fight["red_deaths"]
-        print(f"  {fight['start_min']:5.1f} min  |  {fight['size']} kills  |  "
-              f"B:{bd} R:{rd}  |  {w} wins  |  {fight['duration_sec']:.0f}s")
+        # +N = kills scored by that team (= opponents who died)
+        # bd/rd count deaths on each side, so each team's score is the other's death count
+        blue_kills = rd  # blue killed this many red players
+        red_kills  = bd  # red killed this many blue players
+        if fight["winner"] == "blue":
+            outcome = "BLUE  "
+        elif fight["winner"] == "red":
+            outcome = "RED   "
+        else:
+            outcome = "EVEN  "
+        dur = fight["duration_sec"]
+        print(f"  #{i:<2}  {mins}:{secs:02d}  x{fight['size']} kills  "
+              f"Blue +{blue_kills}  Red +{red_kills}  ->  {outcome}  ({dur:.0f}s)")
+
+    if tf_list:
+        print("  -- Team Fights (4+ kills) --")
+        for i, f in enumerate([x for x in fights if x["size"] >= 4], 1):
+            _fight_row(i, f)
+    if sk_list:
+        print("  -- Skirmishes (2-3 kills) --")
+        for i, f in enumerate([x for x in fights if x["size"] < 4], 1):
+            _fight_row(i, f)
 
     fights_out = f"{prefix}_fights.png"
     render_teamfight_clusters(args.map, fights, fights_out, downscale=args.downscale)
