@@ -1,1 +1,9 @@
-"/.dev" 
+# Development data (replay files, map images, API keys, cached positions)
+/.dev
+
+# Generated output images
+/outputs/
+
+# Python bytecode cache
+__pycache__/
+*.py[cod]
