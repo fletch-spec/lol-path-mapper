@@ -50,6 +50,10 @@ def extract_ward_events(timeline):
             if creator_id == 0:
                 continue
 
+            ward_type = event.get("wardType", "UNKNOWN")
+            if ward_type == "UNDEFINED":
+                continue  # structure/ability wards — not player placements
+
             pos = event.get("position")
             if pos:
                 x, y = pos["x"], pos["y"]
@@ -63,7 +67,7 @@ def extract_ward_events(timeline):
             events.append({
                 "timestamp": event["timestamp"],
                 "creator_id": creator_id,
-                "ward_type": event.get("wardType", "UNKNOWN"),
+                "ward_type": ward_type,
                 "x": x,
                 "y": y,
             })

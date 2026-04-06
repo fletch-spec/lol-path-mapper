@@ -22,6 +22,16 @@ def game_to_pixel(game_x, game_y, img_w, img_h):
     return (max(0, min(px, img_w - 1)), max(0, min(py, img_h - 1)))
 
 
+def game_to_pixel_raw(game_x, game_y, img_w, img_h):
+    """Like game_to_pixel but without clamping — returns the true pixel position
+    including any negative or out-of-range values.  Used to detect whether a
+    coordinate actually falls within the rendered image area."""
+    px = int((game_x - GAME_X_MIN) / (GAME_X_MAX - GAME_X_MIN) * img_w)
+    py = int((1.0 - (game_y - GAME_Y_MIN) / (GAME_Y_MAX - GAME_Y_MIN)) * img_h)
+    py -= round(_MAP_Y_UP * img_h)
+    return (px, py)
+
+
 def split_segments(positions, threshold=RECALL_THRESHOLD):
     """Split position list into segments, breaking on large jumps (recalls/teleports)."""
     if not positions:

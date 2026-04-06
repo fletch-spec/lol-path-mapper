@@ -61,8 +61,6 @@ def render_xp_heatmap(map_path, xp_locations, output_path, downscale=4):
     then maps through matplotlib's plasma colormap for a vivid yellow→orange→purple
     gradient. Areas with no XP remain fully transparent.
     """
-    import matplotlib.cm as cm
-
     base = Image.open(map_path).convert("RGBA")
     img_w, img_h = base.size
 
@@ -96,14 +94,29 @@ def render_xp_heatmap(map_path, xp_locations, output_path, downscale=4):
     if grid.max() > 0:
         grid /= grid.max()
 
-    # Map through plasma colormap (0=dark purple, 1=bright yellow)
-    colormap = cm.get_cmap("plasma")
-    rgba     = colormap(grid)  # float array shape (gh, gw, 4)
+    # Custom colormap: cyan (low/faint) → violet → orange → yellow (high/hot)
+    # Cyan at the low end contrasts clearly with the dark map background so
+    # even faint XP areas are discernible, unlike plasma's near-black purple start.
+    from matplotlib.colors import LinearSegmentedColormap
+    colormap = LinearSegmentedColormap.from_list(
+        "xp_heatmap",
+        [(0.0, "#00E5FF"),   # cyan   — low XP, distinct from map greens/darks
+         (0.4, "#CC44FF"),   # violet — mid
+         (0.7, "#FF6600"),   # orange
+         (1.0, "#FFEE00")],  # yellow — high XP
+    )
+    rgba = colormap(grid)  # float array shape (gh, gw, 4)
 
-    # Only show cells above a visibility threshold; scale alpha to [0, 0.88]
-    threshold    = 0.08
-    alpha_mask   = np.where(grid > threshold,
-                            np.clip((grid - threshold) / (1 - threshold), 0, 1) * 0.88, 0)
+    # Alpha: floor of 0.20 for above-threshold cells so faint areas remain visible;
+    # threshold lowered to 0.05 to expose more of the sparse XP regions.
+    threshold = 0.05
+    min_alpha = 0.20
+    max_alpha = 0.88
+    alpha_mask = np.where(
+        grid > threshold,
+        min_alpha + np.clip((grid - threshold) / (1 - threshold), 0, 1) * (max_alpha - min_alpha),
+        0,
+    )
     rgba[..., 3] = alpha_mask
 
     overlay_small = Image.fromarray((rgba * 255).astype(np.uint8), "RGBA")
@@ -140,14 +153,15 @@ def _draw_xp_colorbar(img, colormap):
 # ── team fight clusters ───────────────────────────────────────────────────────
 
 def render_teamfight_clusters(map_path, clusters, output_path, downscale=4):
-    """Numbered fight circles with a legend panel.
+    """Numbered fight circles with death markers and connector lines.
 
     Each fight gets a sequential number drawn at the circle centre.
-    Circle size encodes kill count (cube-root scaled — explained in the legend).
-    Kill dots inside each circle are coloured by the team that took the kill:
-      blue dot = a blue-team player died here
-      red  dot = a red-team player died here
-    A legend panel in the corner lists every fight: # | time | kills | winner.
+    Circle size encodes kill count (cube-root scaled).
+    Each death in a cluster is shown as an X mark coloured by team:
+      blue X = a blue-team player died here
+      red  X = a red-team player died here
+    Faint white lines connect the cluster centre to each death mark so the
+    spatial relationship between deaths in the same fight is clear.
     """
     base = Image.open(map_path).convert("RGBA")
     img_w, img_h = base.size
@@ -156,7 +170,6 @@ def render_teamfight_clusters(map_path, clusters, output_path, downscale=4):
 
     base_r   = _game_units_to_px(350, img_w)
     font_num = _load_font(max(18, img_w // 220))
-    font_leg = _load_font(max(11, img_w // 340))
 
     # Chronological order for consistent numbering
     sorted_clusters = sorted(clusters, key=lambda c: c["members"][0]["time"])
@@ -186,18 +199,27 @@ def render_teamfight_clusters(map_path, clusters, output_path, downscale=4):
                      outline=(*outline_rgb, 230),
                      width=max(2, r // 10))
 
-        # Individual kill dots coloured by which team lost the player
-        dot_r = max(4, r // 5)
+        x_arm = max(5, r // 6)  # half-width of each X stroke
+        line_w = max(2, r // 18)
+
         for kill in cluster["members"]:
             kx, ky = game_to_pixel(kill["x"], kill["y"], img_w, img_h)
-            # Blue dot = blue team player died here; red dot = red team player died here
-            if 1 <= kill["victim"] <= 5:
-                dot_fill = (100, 160, 255, 220)
-            else:
-                dot_fill = (255, 100, 100, 220)
-            draw.ellipse([kx - dot_r, ky - dot_r, kx + dot_r, ky + dot_r], fill=dot_fill)
 
-    # Composite circles before drawing text (text always rendered on top)
+            # Faint white connector line from cluster centre to death location
+            draw.line([(cx, cy), (kx, ky)], fill=(255, 255, 255, 55),
+                      width=max(1, line_w // 2))
+
+            # X mark — blue if a blue player died, red if a red player died
+            if 1 <= kill["victim"] <= 5:
+                x_color = (120, 170, 255, 230)
+            else:
+                x_color = (255, 100, 100, 230)
+            draw.line([(kx - x_arm, ky - x_arm), (kx + x_arm, ky + x_arm)],
+                      fill=x_color, width=line_w)
+            draw.line([(kx + x_arm, ky - x_arm), (kx - x_arm, ky + x_arm)],
+                      fill=x_color, width=line_w)
+
+    # Composite circles + lines before drawing text (text always on top)
     result     = Image.alpha_composite(base, overlay)
     label_draw = ImageDraw.Draw(result)
 
@@ -209,50 +231,7 @@ def render_teamfight_clusters(map_path, clusters, output_path, downscale=4):
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         _draw_outlined_text(label_draw, (cx - tw // 2, cy - th // 2), str(ci), font_num)
 
-    # Legend panel
-    _draw_fights_legend(label_draw, sorted_clusters, img_w, img_h, font_leg)
     _save(result, output_path, downscale)
-
-
-def _draw_fights_legend(draw, clusters, img_w, img_h, font):
-    """Semi-transparent legend panel listing every fight with number/time/kills/winner."""
-    pad     = img_w // 60
-    line_h  = max(22, img_w // 290)
-    col_w   = img_w // 4
-
-    # Panel height: 2 header lines + one row per fight
-    n_rows    = len(clusters)
-    panel_h   = (n_rows + 2) * line_h + pad * 2
-    panel_x   = pad
-    panel_y   = img_h - panel_h - pad
-
-    draw.rectangle([panel_x, panel_y, panel_x + col_w, img_h - pad],
-                   fill=(0, 0, 0, 165))
-
-    _draw_outlined_text(draw, (panel_x + 6, panel_y + 4),
-                        "#   TYPE  TIME    ×KILLS  WINNER",
-                        font, fill=(180, 210, 255), outline=(0, 0, 0))
-    _draw_outlined_text(draw, (panel_x + 6, panel_y + 4 + line_h),
-                        "Circle size = kill count (cube-root scale)",
-                        font, fill=(130, 130, 130), outline=(0, 0, 0))
-
-    for i, cluster in enumerate(clusters):
-        mins = int(cluster["start_min"])
-        secs = int((cluster["start_min"] - mins) * 60)
-        kind   = "TF " if cluster["size"] >= 4 else "SK "  # Team Fight vs Skirmish
-        winner = cluster["winner"].capitalize()
-
-        if cluster["winner"] == "blue":
-            fill = (120, 170, 255)
-        elif cluster["winner"] == "red":
-            fill = (255, 110, 110)
-        else:
-            fill = (180, 180, 180)
-
-        row_y = panel_y + 4 + (i + 2) * line_h
-        _draw_outlined_text(draw, (panel_x + 6, row_y),
-                            f"#{i+1:<2}  {kind}  {mins}:{secs:02d}    ×{cluster['size']:<2}  {winner}",
-                            font, fill=fill, outline=(0, 0, 0))
 
 
 # ── lane aggression ───────────────────────────────────────────────────────────
@@ -260,84 +239,134 @@ def _draw_fights_legend(draw, clusters, img_w, img_h, font):
 def render_lane_aggression(map_path, aggression_info, output_path, downscale=4):
     """Laning-phase position density map with aggression score annotation.
 
-    Purpose: shows where the player spent the first 15 minutes. The orange
-    density cloud reveals movement patterns; the avg-position marker summarises
-    overall lane presence. The aggression score (0–100) measures how far forward
-    the player was positioned relative to the two bases:
+    Purpose: shows where the player spent the first 15 minutes. The orange/amber
+    density cloud reveals movement patterns and zone control; the avg-position
+    marker summarises overall lane presence. The aggression score (0–100) measures
+    how far forward the player was positioned relative to the two bases:
       0  = camped under own tower
       50 = neutral / river
       100 = always at enemy tower
+
+    Density is built with a numpy accumulation grid (same technique as the XP
+    heatmap) so even sparse position data produces a legible cloud.
     """
     base = Image.open(map_path).convert("RGBA")
     img_w, img_h = base.size
 
-    # Density cloud of laning positions
-    heat  = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
-    hdraw = ImageDraw.Draw(heat)
-    dot_r = max(3, img_w // 800)
+    laning_positions = aggression_info.get("laning_positions", [])
 
-    for x, y in aggression_info["laning_positions"]:
-        px, py = game_to_pixel(x, y, img_w, img_h)
-        hdraw.ellipse([px - dot_r, py - dot_r, px + dot_r, py + dot_r],
-                      fill=(255, 165, 0, 55))
+    if laning_positions:
+        # ── numpy density grid ──────────────────────────────────────────────
+        # Work at quarter resolution for speed; upscale the overlay at the end
+        GRID_DIV = 4
+        gw, gh   = img_w // GRID_DIV, img_h // GRID_DIV
+        grid     = np.zeros((gh, gw), dtype=np.float32)
 
-    heat   = heat.filter(ImageFilter.GaussianBlur(radius=dot_r * 3))
-    result = Image.alpha_composite(base, heat)
+        # Each sample contributes to a ~500-unit radius patch in the grid
+        blob_r = max(3, _game_units_to_px(500, img_w) // GRID_DIV)
 
-    # Average-position marker (orange circle with white border)
+        for x, y in laning_positions:
+            px, py = game_to_pixel(x, y, img_w, img_h)
+            gx, gy = px // GRID_DIV, py // GRID_DIV
+            x0, x1 = max(0, gx - blob_r), min(gw, gx + blob_r + 1)
+            y0, y1 = max(0, gy - blob_r), min(gh, gy + blob_r + 1)
+            grid[y0:y1, x0:x1] += 1.0
+
+        # Normalise to [0,1] then blur so nearby samples merge into smooth zones
+        norm_img = Image.fromarray(
+            (np.clip(grid / (grid.max() + 1e-9), 0, 1) * 255).astype(np.uint8), "L"
+        )
+        norm_img = norm_img.filter(ImageFilter.GaussianBlur(radius=max(2, blob_r)))
+        grid     = np.asarray(norm_img, dtype=np.float32) / 255.0
+
+        # Custom colormap: gold (sparse) → amber → red-orange (dense)
+        # Gold at the low end contrasts with the map's greens so faint laning
+        # zones stay legible; the warm shift toward red marks heavily-occupied areas.
+        from matplotlib.colors import LinearSegmentedColormap
+        agg_cmap = LinearSegmentedColormap.from_list(
+            "aggression",
+            [(0.0, "#FFD700"),   # gold       — low density, distinct from map
+             (0.5, "#FF8C00"),   # amber      — mid density
+             (1.0, "#FF2200")],  # red-orange — high density
+        )
+        threshold = 0.03
+        min_alpha = 0.20
+        max_alpha = 0.82
+        alpha_float    = np.where(
+            grid > threshold,
+            min_alpha + np.clip((grid - threshold) / (1 - threshold), 0, 1) * (max_alpha - min_alpha),
+            0,
+        )
+        rgba_f         = agg_cmap(grid)
+        rgba_f[..., 3] = alpha_float
+        rgba           = (rgba_f * 255).astype(np.uint8)
+
+        overlay = Image.fromarray(rgba, "RGBA").resize((img_w, img_h), Image.LANCZOS)
+        result  = Image.alpha_composite(base, overlay)
+    else:
+        result = base.copy()
+
+    # ── average-position marker ──────────────────────────────────────────────
     markers = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
     mdraw   = ImageDraw.Draw(markers)
     ax_px, ay_px = game_to_pixel(
         aggression_info["avg_pos"][0], aggression_info["avg_pos"][1], img_w, img_h
     )
-    mr = max(14, img_w // 240)
-    mdraw.ellipse([ax_px - mr - 6, ay_px - mr - 6, ax_px + mr + 6, ay_px + mr + 6],
-                  fill=(255, 165, 0, 60))
+    mr = max(20, img_w // 180)
+    # Outer glow
+    mdraw.ellipse([ax_px - mr - 10, ay_px - mr - 10, ax_px + mr + 10, ay_px + mr + 10],
+                  fill=(255, 165, 0, 70))
+    # Main dot with white ring
     mdraw.ellipse([ax_px - mr, ay_px - mr, ax_px + mr, ay_px + mr],
-                  fill=(255, 165, 0, 230), outline=(255, 255, 255, 255),
-                  width=max(2, mr // 5))
+                  fill=(255, 165, 0, 240), outline=(255, 255, 255, 255),
+                  width=max(3, mr // 5))
     result = Image.alpha_composite(result, markers)
 
-    # Annotation overlay
+    # ── annotation overlay ───────────────────────────────────────────────────
+    # Font sizes are specified at full render resolution; they read correctly
+    # after downscale (e.g. img_w // 90 = 91px at 8192 → ~23px at 2048 output).
     fdraw    = ImageDraw.Draw(result)
-    font_med = _load_font(max(15, img_w // 260))
-    font_sm  = _load_font(max(11, img_w // 370))
+    font_med = _load_font(max(15, img_w // 90))
+    font_sm  = _load_font(max(11, img_w // 130))
 
     score       = aggression_info["score"]
     description = aggression_info["description"]
     lane        = aggression_info["lane"]
 
-    # Horizontal score gauge bar (top-left corner)
-    bx, by = img_w // 40, img_w // 40
-    bar_w  = img_w // 5
-    bar_h  = max(12, img_w // 190)
+    bx    = img_w // 40
+    by    = img_w // 30
+    bar_w = img_w // 5
+    bar_h = max(12, img_w // 100)
 
+    # Gauge background track
     fdraw.rectangle([bx, by, bx + bar_w, by + bar_h], fill=(20, 20, 20, 200))
-    fill_w     = int(bar_w * score / 100)
-    bar_color  = ((30, 100, 255, 220) if score < 44
-                  else (50, 200, 90, 220) if score < 58
-                  else (255, 100, 30, 220))
+    fill_w    = int(bar_w * score / 100)
+    bar_color = ((30, 100, 255, 220)  if score < 44
+                 else (50, 200, 90, 220) if score < 58
+                 else (255, 130, 30, 220))
     fdraw.rectangle([bx, by, bx + fill_w, by + bar_h], fill=bar_color)
 
+    # "Defensive < ... > Aggressive" axis labels above the bar
+    axis_y = by - max(16, img_w // 220) - 4
+    _draw_outlined_text(fdraw, (bx, axis_y),
+                        "Defensive <", font_sm, fill=(100, 150, 255))
+    agg_label = "> Aggressive"
+    aw = fdraw.textbbox((0, 0), agg_label, font=font_sm)[2]
+    _draw_outlined_text(fdraw, (bx + bar_w - aw, axis_y),
+                        agg_label, font_sm, fill=(255, 130, 50))
+
     # Labels below the gauge
+    label_y = by + bar_h + max(4, img_w // 700)
     _draw_outlined_text(
-        fdraw, (bx, by + bar_h + 4),
+        fdraw, (bx, label_y),
         f"{lane} Lane  |  Aggression {score}/100  —  {description}",
         font_med
     )
     _draw_outlined_text(
-        fdraw, (bx, by + bar_h + 4 + max(18, img_w // 220)),
-        "Orange cloud = first-15-min positions  |  Circle = average position",
+        fdraw, (bx, label_y + max(18, img_w // 90)),
+        "Orange = first-15-min positions  |  Circle = avg position",
         font_sm, fill=(200, 200, 200)
     )
-    # Defensive / Aggressive axis labels
-    _draw_outlined_text(fdraw, (bx, by - max(14, img_w // 300) - 2),
-                        "Defensive ◀", font_sm, fill=(100, 150, 255))
-    aggressive_label = "▶ Aggressive"
-    bbox = fdraw.textbbox((0, 0), aggressive_label, font=font_sm)
-    label_w = bbox[2] - bbox[0]
-    _draw_outlined_text(fdraw, (bx + bar_w - label_w, by - max(14, img_w // 300) - 2),
-                        aggressive_label, font_sm, fill=(255, 120, 50))
 
     _save(result, output_path, downscale)
 
@@ -384,23 +413,13 @@ def render_activity_chart(stats, per_minute, champion_name, output_path,
     SUB    = "#aaaaaa"
     ACCENT = "#7ecfff"
 
-    # Marker styles for each event type on the timeline row (scatter() uses 's' not 'ms')
+    # Marker styles: combat events (upper half) and objective events (lower half)
+    # towers and objectives are merged — both counted as map objectives
     EVENT_STYLES = {
         "kills":      dict(marker="^", color="#44ff88", s=80,  zorder=5, label="Kill"),
         "deaths":     dict(marker="X", color="#ff4444", s=80,  zorder=5, label="Death"),
         "assists":    dict(marker="D", color="#44ddff", s=40,  zorder=4, label="Assist"),
-        "towers":     dict(marker="v", color="#FFD700", s=80,  zorder=5, label="Tower"),
-        "objectives": dict(marker="*", color="#ffffff", s=140, zorder=5, label="Objective"),
-        "recalls":    dict(marker="o", color="#cc88ff", s=55,  zorder=4, label="Recall"),
-    }
-    # Vertical stagger so overlapping events don't pile on the same y
-    Y_LEVELS = {
-        "kills":       0.65,
-        "deaths":     -0.65,
-        "assists":     0.35,
-        "towers":      0.65,
-        "objectives":  0.65,
-        "recalls":    -0.35,
+        "objectives": dict(marker="*", color="#FFD700", s=140, zorder=5, label="Objective"),
     }
 
     game_end = stats["duration_min"]
@@ -412,17 +431,17 @@ def render_activity_chart(stats, per_minute, champion_name, output_path,
     fig = plt.figure(figsize=(18, 10), facecolor=BG)
     gs  = GridSpec(4, 2, figure=fig,
                    width_ratios=[5, 1],
-                   height_ratios=[2.5, 1.5, 0.35, 2.5],
-                   hspace=0.06, wspace=0.04,
+                   height_ratios=[0.4, 3.0, 0.9, 3.0],
+                   hspace=0.04, wspace=0.04,
                    left=0.05, right=0.98, top=0.93, bottom=0.06)
 
-    ax_cs     = fig.add_subplot(gs[0, 0])
-    ax_events = fig.add_subplot(gs[1, 0], sharex=ax_cs)
-    ax_strip  = fig.add_subplot(gs[2, 0], sharex=ax_cs)
-    ax_gold   = fig.add_subplot(gs[3, 0], sharex=ax_cs)
+    ax_strip  = fig.add_subplot(gs[0, 0])
+    ax_cs     = fig.add_subplot(gs[1, 0], sharex=ax_strip)
+    ax_center = fig.add_subplot(gs[2, 0], sharex=ax_strip)
+    ax_gold   = fig.add_subplot(gs[3, 0], sharex=ax_strip)
     ax_info   = fig.add_subplot(gs[:, 1])
 
-    for ax in (ax_cs, ax_events, ax_strip, ax_gold):
+    for ax in (ax_cs, ax_strip, ax_center, ax_gold):
         ax.set_facecolor(PANEL)
         ax.tick_params(colors=TEXT, labelsize=8)
         for spine in ["top", "right"]:
@@ -430,45 +449,7 @@ def render_activity_chart(stats, per_minute, champion_name, output_path,
         for spine in ["bottom", "left"]:
             ax.spines[spine].set_color(GRID_C)
 
-    # ── row 0: CS per minute ─────────────────────────────────────────────────
-    avg_cs = sum(cs_bars) / len(cs_bars) if cs_bars else 0
-    ax_cs.bar(minutes, cs_bars, color="#4CAF50", alpha=0.85, width=0.8)
-    ax_cs.axhline(avg_cs, color="#aaffaa", linestyle="--", linewidth=1,
-                  label=f"avg {avg_cs:.1f} CS/min")
-    ax_cs.set_ylabel("CS / min", color=TEXT, fontsize=9)
-    ax_cs.set_title("CS per Minute", color=SUB, fontsize=9, pad=3)
-    ax_cs.legend(labelcolor=TEXT, facecolor=BG, edgecolor=GRID_C, fontsize=8)
-    ax_cs.grid(axis="y", color=GRID_C, linewidth=0.5, alpha=0.7)
-    ax_cs.tick_params(labelbottom=False)
-
-    # ── row 1: event timeline ────────────────────────────────────────────────
-    ax_events.axhline(0, color=ACCENT, linewidth=1.5, alpha=0.5, zorder=2)
-    ax_events.set_xlim(-0.5, game_end + 0.5)
-    ax_events.set_ylim(-1.3, 1.3)
-    ax_events.set_yticks([])
-    ax_events.spines["left"].set_visible(False)
-    ax_events.tick_params(labelbottom=False)
-
-    if events_at_time:
-        for key, style in EVENT_STYLES.items():
-            times = events_at_time.get(key, [])
-            if not times:
-                continue
-            y_base = Y_LEVELS[key]
-            ax_events.scatter(times, [y_base] * len(times),
-                              **{k: v for k, v in style.items() if k != "label"},
-                              label=style["label"])
-            for t in times:
-                ax_events.axvline(t, color=style["color"], alpha=0.12, linewidth=0.9, zorder=1)
-
-    handles, labels_ = ax_events.get_legend_handles_labels()
-    if handles:
-        ax_events.legend(handles, labels_, loc="upper right",
-                         labelcolor=TEXT, facecolor=BG, edgecolor=GRID_C,
-                         fontsize=7, ncol=min(6, len(handles)), markerscale=0.9)
-    ax_events.set_title("Event Timeline", color=SUB, fontsize=9, pad=3)
-
-    # ── row 2: activity colour strip ─────────────────────────────────────────
+    # ── row 0: activity colour strip (top) ───────────────────────────────────
     ax_strip.set_yticks([])
     for sp in ax_strip.spines.values():
         sp.set_visible(False)
@@ -484,14 +465,70 @@ def render_activity_chart(stats, per_minute, champion_name, output_path,
             ax_strip.barh(0, dt, left=entry["time_min"], height=1, color=color, alpha=0.92)
 
     patches = [mpatches.Patch(color=c, label=l) for l, c in ACTIVITY_COLORS.items()]
-    ax_strip.legend(handles=patches, loc="center right", labelcolor=TEXT,
-                    facecolor=BG, edgecolor="none", fontsize=7, ncol=4,
-                    borderpad=0.3, handlelength=1)
+    ax_strip.legend(handles=patches,
+                    bbox_to_anchor=(1.0, 0.5), loc="center right",
+                    labelcolor=TEXT, facecolor=BG, edgecolor="none",
+                    fontsize=7, ncol=2, borderpad=0.5, handlelength=1,
+                    handletextpad=0.5)
 
-    # ── row 3: gold per minute ────────────────────────────────────────────────
+    # ── row 1: CS per minute (bars up) ───────────────────────────────────────
+    avg_cs = sum(cs_bars) / len(cs_bars) if cs_bars else 0
+    ax_cs.bar(minutes, cs_bars, color="#4CAF50", alpha=0.85, width=0.8)
+    ax_cs.axhline(avg_cs, color="#aaffaa", linestyle="--", linewidth=1,
+                  label=f"avg {avg_cs:.1f} CS/min")
+    ax_cs.set_ylabel("CS / min", color=TEXT, fontsize=9)
+    ax_cs.grid(axis="y", color=GRID_C, linewidth=0.5, alpha=0.7)
+    ax_cs.spines["bottom"].set_visible(False)
+    ax_cs.tick_params(bottom=False, labelbottom=False)
+    ax_cs.legend(loc="upper left", labelcolor=TEXT, facecolor=BG,
+                 edgecolor=GRID_C, fontsize=7, markerscale=0.9)
+
+    # ── row 2: centre event band ──────────────────────────────────────────────
+    ax_center.set_yticks([])
+    ax_center.set_xlim(ax_strip.get_xlim())
+    ax_center.set_ylim(-1.3, 1.3)
+    ax_center.spines["top"].set_visible(False)
+    ax_center.spines["bottom"].set_visible(False)
+    ax_center.spines["left"].set_visible(False)
+    ax_center.tick_params(bottom=False, labelbottom=False)
+    ax_center.axhline(0, color=ACCENT, linewidth=1.0, alpha=0.4, zorder=2)
+
+    # Y positions: combat events in upper half, objective events in lower half
+    # towers and objectives are merged — collect both time lists under "objectives"
+    CENTER_Y = {
+        "kills":       0.90,
+        "assists":     0.45,
+        "deaths":     -0.45,
+        "objectives": -0.90,
+    }
+    if events_at_time:
+        center_handles = []
+        for key, y_pos in CENTER_Y.items():
+            style = EVENT_STYLES.get(key)
+            if style is None:
+                continue
+            # merge towers into objectives
+            times = list(events_at_time.get(key, []))
+            if key == "objectives":
+                times = sorted(times + list(events_at_time.get("towers", [])))
+            if times:
+                h = ax_center.scatter(times, [y_pos] * len(times),
+                                      marker=style["marker"], color=style["color"],
+                                      s=style["s"], zorder=style["zorder"],
+                                      label=style["label"])
+                center_handles.append(h)
+        if center_handles:
+            ax_center.legend(handles=center_handles,
+                             bbox_to_anchor=(1.0, 0.5), loc="center right",
+                             labelcolor=TEXT, facecolor=BG, edgecolor=GRID_C,
+                             fontsize=7, ncol=1, markerscale=0.9,
+                             borderpad=0.5, handletextpad=0.5)
+
+    # ── row 3: gold per minute (bars down) ───────────────────────────────────
     ax_gold.bar(minutes, gd_bars, color="#FFD700", alpha=0.85, width=0.8)
+    ax_gold.invert_yaxis()
+    ax_gold.spines["top"].set_visible(False)
     ax_gold.set_ylabel("Gold / min", color=TEXT, fontsize=9)
-    ax_gold.set_title("Gold per Minute", color=SUB, fontsize=9, pad=3)
     ax_gold.set_xlabel("Game Time (minutes)", color=TEXT, fontsize=9)
     ax_gold.grid(axis="y", color=GRID_C, linewidth=0.5, alpha=0.7)
 

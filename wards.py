@@ -46,6 +46,10 @@ def main():
                         help="Filter by team (default: both)")
     parser.add_argument("--participant", type=int, default=None,
                         help="Filter by participant ID 1-10 (overrides --team)")
+    parser.add_argument("--start", type=float, default=0,
+                        help="Exclude wards placed before this many minutes (default: 0)")
+    parser.add_argument("--end", type=float, default=None,
+                        help="Exclude wards placed after this many minutes (default: end of game)")
     parser.add_argument("--no-cache", action="store_true",
                         help="Ignore cached ward events and re-extract from timeline")
     args = parser.parse_args()
@@ -69,7 +73,22 @@ def main():
         print(f"Extracting ward events from {timeline_path}...")
         ward_events = extract_ward_events(load_timeline(timeline_path))
         save_ward_events(ward_events, cache_path)
-        print(f"Extracted {len(ward_events)} ward placements → cached at {cache_path}")
+        print(f"Extracted {len(ward_events)} ward placements -> cached at {cache_path}")
+
+    # Drop structure/ability wards that have no meaningful placement position
+    ward_events = [e for e in ward_events if e["ward_type"] != "UNDEFINED"]
+    print(f"Excluded UNDEFINED (structure/ability) wards: {len(ward_events)} remaining")
+
+    # Apply time window filter
+    start_ms = int(args.start * 60_000)
+    end_ms = int(args.end * 60_000) if args.end is not None else None
+    if start_ms > 0 or end_ms is not None:
+        ward_events = [
+            e for e in ward_events
+            if e["timestamp"] >= start_ms and (end_ms is None or e["timestamp"] < end_ms)
+        ]
+        window = f"{args.start:.0f}m" + (f"-{args.end:.0f}m" if args.end else "+")
+        print(f"Time window {window}: {len(ward_events)} wards")
 
     # Apply filters
     if args.participant is not None:
@@ -89,8 +108,11 @@ def main():
         sys.exit(0)
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
+    time_suffix = ""
+    if args.start > 0 or args.end is not None:
+        time_suffix = f"_{args.start:.0f}m" + (f"-{args.end:.0f}m" if args.end else "plus")
     suffix = (f"_p{args.participant}" if args.participant is not None
-              else f"_{args.team}" if args.team != "both" else "")
+              else f"_{args.team}" if args.team != "both" else "") + time_suffix
 
     ward_out = os.path.join(OUTPUT_DIR, f"{match_id}_wards{suffix}.png")
     vision_out = os.path.join(OUTPUT_DIR, f"{match_id}_vision{suffix}.png")
