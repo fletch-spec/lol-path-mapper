@@ -8,15 +8,26 @@ Records and analyses a champion's game from a LoL replay. Produces map overlays 
 
 > Everything you need to go from a replay file to rendered outputs.
 
-### 1. Install
+### 1. Enable the Replay API in the LoL client
+
+Do this once. Open:
+```
+C:\Riot Games\League of Legends\Config\game.cfg
+```
+Under `[General]`, add:
+```ini
+EnableReplayApi=1
+```
+Save and relaunch the client.
+
+### 2. Install
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-Place `summoners_rift.png` in the project root (8192×8192 recommended).
 
-### 2. Add your replays
+### 3. Add your replays
 
 Copy `.rofl` replay files into the `replays/` folder, then check what you have:
 
@@ -24,7 +35,7 @@ Copy `.rofl` replay files into the `replays/` folder, then check what you have:
 python cache.py
 ```
 
-### 3. Fetch game data (optional but recommended)
+### 4. Fetch game data (optional but recommended)
 
 This downloads champion names, ward events, and match info from Riot's API automatically.
 
@@ -37,17 +48,6 @@ python cache.py --load
 You'll be prompted to paste your key the first time. It's saved for future runs.
 Development keys expire every 24 hours — just run `--load` again and paste a new one when prompted.
 
-### 4. Enable the Replay API in the LoL client
-
-Do this once. Open:
-```
-C:\Riot Games\League of Legends\Config\game.cfg
-```
-Under `[General]`, add:
-```ini
-EnableReplayApi=1
-```
-Save and relaunch the client.
 
 ### 5. Record a replay
 
