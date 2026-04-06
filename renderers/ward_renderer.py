@@ -13,7 +13,7 @@ transforms consistent across the project.
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
-from path_renderer import GAME_X_MAX, GAME_X_MIN, game_to_pixel, game_to_pixel_raw
+from .path_renderer import GAME_X_MAX, GAME_X_MIN, game_to_pixel, game_to_pixel_raw
 
 # Approximate vision radius for standard wards (Control Wards are ~900, Stealth ~900)
 WARD_VISION_RADIUS = 900  # game units
@@ -71,6 +71,7 @@ def _normalize_vision_layer(layer, min_alpha=0, max_alpha=200, artifact_threshol
     if peak == 0:
         return layer
     norm         = alpha / peak
+    # Alpha values below artifact_threshold (out of 255) are blur fringe noise; zero them out
     arr[..., 3]  = np.where(alpha > artifact_threshold,
                              min_alpha + norm * (max_alpha - min_alpha), 0)
     return Image.fromarray(arr.astype(np.uint8))
@@ -106,7 +107,7 @@ def render_vision_heatmap(map_path, ward_events, output_path, downscale=4):
             fill=color,
         )
 
-    blur_radius = max(1, vision_px // 4)
+    blur_radius = max(1, vision_px // 4)  # 1/4 of the vision radius gives a soft edge without washing out dense clusters
     blue_layer = _normalize_vision_layer(
         blue_layer.filter(ImageFilter.GaussianBlur(radius=blur_radius))
     )

@@ -1,20 +1,20 @@
 """Match insight generator.
 
-Outputs for the selected player:
-  <match_id>_<champion>_xp_heatmap.png  — where XP was earned on the map
-  <match_id>_<champion>_fights.png      — team fight clusters (all 10 players)
-  <match_id>_<champion>_activity.png    — CS / gold / activity timeline chart
-  <match_id>_<champion>_lane.png        — laning-phase positions + aggression score
+Outputs for the selected player (in outputs/<match_id>/<champion>/):
+  activity.png    — CS / gold / activity timeline chart
+  xp_heatmap.png  — where XP was earned on the map
+  fights.png      — team fight clusters (all 10 players)
+  lane.png        — laning-phase positions + aggression score
 
 Requires:
-  - Riot Match API v5 timeline JSON  (.dev/cache/timeline_*.json)
-  - Riot Match API v5 match JSON     (.dev/cache/match_*.json)  — for participant mapping
-  - Cached position data             (.dev/cache/positions_<champion>.json)  — for XP heatmap / lane analysis
+  - Riot Match API v5 timeline JSON  (cache/timeline_*.json)
+  - Riot Match API v5 match JSON     (cache/match_*.json)  — for participant mapping
+  - Cached position data             (cache/positions_<champion>.json)  — for XP heatmap / lane analysis
 
 Usage:
-    python analyze.py .dev/cache/timeline_OC1_697009636.json --champion Ahri
-    python analyze.py .dev/cache/timeline_OC1_697009636.json --participant 5
-    python analyze.py .dev/cache/timeline_OC1_697009636.json --champion Ahri --downscale 2
+    python analyze.py cache/timeline_OC1_697009636.json --champion Ahri
+    python analyze.py cache/timeline_OC1_697009636.json --participant 5
+    python analyze.py cache/timeline_OC1_697009636.json --champion Ahri --downscale 2
 """
 
 import json
@@ -22,14 +22,20 @@ import os
 import sys
 import argparse
 
-from ward_analyzer import (
+# Ensure Unicode output works on Windows terminals
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+from cache import upsert_game, output_dir_for
+from analysis.ward_analyzer import (
     build_participant_map,
     load_timeline,
     match_id_from_path,
     match_json_path_from_timeline,
+    summoner_for_champion,
     CACHE_DIR,
 )
-from insights import (
+from analysis.insights import (
     activity_stats,
     lane_aggression,
     per_minute_breakdown,
@@ -38,15 +44,14 @@ from insights import (
     team_fight_clusters,
     xp_gain_locations,
 )
-from insights_renderer import (
+from renderers.insights_renderer import (
     render_activity_chart,
     render_lane_aggression,
     render_teamfight_clusters,
     render_xp_heatmap,
 )
 
-DEFAULT_MAP = os.path.join(os.path.dirname(__file__), ".dev", "summoners_rift.png")
-OUTPUT_DIR  = os.path.join(os.path.dirname(__file__), "outputs")
+DEFAULT_MAP = os.path.join(os.path.dirname(__file__), "summoners_rift.png")
 
 
 def _load_positions(champion_name, override_path=None):
@@ -54,12 +59,16 @@ def _load_positions(champion_name, override_path=None):
     if not os.path.exists(path):
         return None, path
     with open(path) as f:
-        return json.load(f), path
+        data = json.load(f)
+    # Handle both new dict format {"meta": ..., "positions": [...]} and old raw-list format
+    if isinstance(data, dict):
+        return data.get("positions", []), path
+    return data, path
 
 
 def main():
     parser = argparse.ArgumentParser(description="Generate match insights for a player")
-    parser.add_argument("timeline", nargs="?", help="Riot timeline JSON (default: most recent in .dev/cache/)")
+    parser.add_argument("timeline", nargs="?", help="Riot timeline JSON (default: most recent in cache/)")
     parser.add_argument("--champion",    default=None, help="Champion name")
     parser.add_argument("--participant", type=int, default=None, help="Participant ID 1-10")
     parser.add_argument("--positions",   default=None, help="Positions JSON path (overrides auto-detect)")
@@ -69,20 +78,27 @@ def main():
 
     # Resolve timeline
     if not args.timeline:
-        from ward_analyzer import latest_timeline_file
+        from analysis.ward_analyzer import latest_timeline_file
         args.timeline = latest_timeline_file()
     if not args.timeline or not os.path.exists(args.timeline):
-        print("No timeline file found. Provide a path or place timeline_*.json in .dev/cache/")
+        print("No timeline file found.")
+        print("  → Run  python cache.py --load  to fetch it automatically (needs a Riot API key).")
+        print("  → Or download manually from Riot Match API v5 and save to cache/timeline_<matchId>.json")
         sys.exit(1)
 
     if not os.path.exists(args.map):
-        print(f"Error: map image not found at {args.map}")
+        print(f"Map image not found: {args.map}")
+        print("  → Place summoners_rift.png in the project root.")
         sys.exit(1)
 
     timeline    = load_timeline(args.timeline)
     match_id    = match_id_from_path(args.timeline)
     match_json  = match_json_path_from_timeline(args.timeline)
     part_map    = build_participant_map(match_json_path=match_json)
+    if not part_map:
+        print(f"Participant names unavailable — match JSON not found at {match_json}")
+        print(f"  → Save match_{match_id}.json to cache/ for champion name lookup.")
+        print(f"  → Use --participant 1-10 instead of --champion to continue without it.\n")
 
     # Resolve participant_id + champion_name
     if args.participant:
@@ -101,6 +117,7 @@ def main():
         sys.exit(1)
 
     team = "ORDER" if participant_id <= 5 else "CHAOS"
+    summoner = summoner_for_champion(match_json, champion_name)
 
     # Load positions (optional but needed for XP heatmap and lane analysis)
     positions, pos_path = _load_positions(champion_name, args.positions)
@@ -109,8 +126,8 @@ def main():
         print("  XP heatmap and lane analysis will be skipped.")
         print("  Run  python main.py --player <champion>  to record a replay first.\n")
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    prefix = os.path.join(OUTPUT_DIR, f"{match_id}_{champion_name}")
+    out_dir = output_dir_for(match_id, champion_name)
+    os.makedirs(out_dir, exist_ok=True)
 
     # ── Stats ──────────────────────────────────────────────────────────────────
     stats    = activity_stats(positions or [], timeline, participant_id, team)
@@ -135,14 +152,14 @@ def main():
     print()
 
     # ── Activity chart ─────────────────────────────────────────────────────────
-    activity_out = f"{prefix}_activity.png"
+    activity_out = os.path.join(out_dir, "activity.png")
     render_activity_chart(stats, pm, champion_name, activity_out,
                           events_at_time=ev_times, per_15s=pm_15s)
 
     # ── XP heatmap ─────────────────────────────────────────────────────────────
     if positions:
         xp_locs  = xp_gain_locations(positions, timeline, participant_id)
-        xp_out   = f"{prefix}_xp_heatmap.png"
+        xp_out   = os.path.join(out_dir, "xp_heatmap.png")
         print(f"XP heatmap: {len(xp_locs)} data points")
         render_xp_heatmap(args.map, xp_locs, xp_out, downscale=args.downscale)
 
@@ -179,20 +196,51 @@ def main():
         for i, f in enumerate([x for x in fights if x["size"] < 4], 1):
             _fight_row(i, f)
 
-    fights_out = f"{prefix}_fights.png"
+    fights_out = os.path.join(out_dir, "fights.png")
     render_teamfight_clusters(args.map, fights, fights_out, downscale=args.downscale)
 
     # ── Lane aggression ────────────────────────────────────────────────────────
+    agg = None
     if positions:
         agg = lane_aggression(positions, team)
         if agg:
             print(f"\nLane: {agg['lane']}  |  "
                   f"Aggression: {agg['score']}/100  ({agg['description']})")
-            lane_out = f"{prefix}_lane.png"
+            lane_out = os.path.join(out_dir, "lane.png")
             render_lane_aggression(args.map, agg, lane_out, downscale=args.downscale)
 
-    print(f"\nOutputs in {OUTPUT_DIR}/")
+    renders_produced = ["activity"]
+    if positions:
+        renders_produced.append("xp_heatmap")
+    renders_produced.append("fights")
+    if agg:
+        renders_produced.append("lane")
+    upsert_game(match_id, champion=champion_name, summoner=summoner,
+                team_color="blue" if team == "ORDER" else "red",
+                renders=renders_produced)
+
+    print(f"\nOutputs in {out_dir}/")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except FileNotFoundError as e:
+        fn = e.filename or ""
+        print(f"\nFile not found: {fn}")
+        if "timeline" in fn:
+            print("  → Provide a timeline path: python analyze.py cache/timeline_<matchId>.json")
+        elif "match_" in fn:
+            print("  → Save the match JSON to cache/match_<matchId>.json for champion name lookup.")
+        elif "summoners_rift" in fn:
+            print("  → Place summoners_rift.png in the project root.")
+        else:
+            print("  → Check the path and try again.")
+        sys.exit(1)
+    except (ValueError, KeyError) as e:
+        print(f"\nA JSON file could not be read: {e}")
+        print("  → Timeline and match JSON must both be from Riot Match API v5 and the same match.")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print("\nInterrupted.")
+        sys.exit(0)

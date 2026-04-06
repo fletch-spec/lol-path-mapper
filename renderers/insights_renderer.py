@@ -7,7 +7,7 @@ import math
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
-from path_renderer import GAME_X_MAX, GAME_X_MIN, game_to_pixel
+from .path_renderer import GAME_X_MAX, GAME_X_MIN, game_to_pixel
 
 
 # ── shared helpers ────────────────────────────────────────────────────────────
@@ -90,7 +90,9 @@ def render_xp_heatmap(map_path, xp_locations, output_path, downscale=4):
     grid = np.asarray(overlay_tmp, dtype=np.float32) / 255.0
 
     # Log normalization: compresses outlier spikes so lane farming stays visible
-    grid = np.log1p(grid * 9) / math.log(10)  # maps [0,1] → [0,1] with log curve
+    # log1p(x*9)/log(10) maps [0,1] → [0,1] with a log curve; *9 sets the curve shape
+    # so that mid-range values (lane CS) stay visible even when objective spikes hit 1.0
+    grid = np.log1p(grid * 9) / math.log(10)
     if grid.max() > 0:
         grid /= grid.max()
 
@@ -112,6 +114,7 @@ def render_xp_heatmap(map_path, xp_locations, output_path, downscale=4):
     threshold = 0.05
     min_alpha = 0.20
     max_alpha = 0.88
+    # Linearly remap grid intensity from [threshold, 1] to [min_alpha, max_alpha]
     alpha_mask = np.where(
         grid > threshold,
         min_alpha + np.clip((grid - threshold) / (1 - threshold), 0, 1) * (max_alpha - min_alpha),
@@ -493,7 +496,8 @@ def render_activity_chart(stats, per_minute, champion_name, output_path,
     ax_center.tick_params(bottom=False, labelbottom=False)
     ax_center.axhline(0, color=ACCENT, linewidth=1.0, alpha=0.4, zorder=2)
 
-    # Y positions: combat events in upper half, objective events in lower half
+    # Y positions within ax_center's [-1.3, 1.3] axis; 0 is the centre line (ACCENT colour).
+    # Combat events sit above centre, death/objective markers below.
     # towers and objectives are merged — collect both time lists under "objectives"
     CENTER_Y = {
         "kills":       0.90,

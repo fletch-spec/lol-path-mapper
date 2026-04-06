@@ -23,15 +23,44 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 BASE_URL = "https://127.0.0.1:2999"
-CACHE_DIR = os.path.join(os.path.dirname(__file__), ".dev", "cache")
+CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "cache")
+
+
+class ReplayNotAvailable(ConnectionError):
+    """Raised when a request to the local replay API fails (client closed, not loaded, etc.)."""
+    pass
 
 
 def _get(path, timeout=5):
-    return requests.get(f"{BASE_URL}{path}", verify=False, timeout=timeout).json()
+    """GET a replay API endpoint and return parsed JSON.
+    Raises ReplayNotAvailable on any connection or timeout failure."""
+    try:
+        return requests.get(f"{BASE_URL}{path}", verify=False, timeout=timeout).json()
+    except requests.exceptions.Timeout:
+        raise ReplayNotAvailable(
+            f"The LoL client stopped responding ({path}). "
+            "The replay may have ended or the client is busy."
+        )
+    except requests.exceptions.ConnectionError:
+        raise ReplayNotAvailable(
+            f"Could not reach the LoL client ({path}). "
+            "Make sure a replay is open and the client hasn't closed."
+        )
 
 
 def _post(path, data, timeout=5):
-    return requests.post(f"{BASE_URL}{path}", json=data, verify=False, timeout=timeout)
+    """POST to a replay API endpoint.
+    Raises ReplayNotAvailable on any connection or timeout failure."""
+    try:
+        return requests.post(f"{BASE_URL}{path}", json=data, verify=False, timeout=timeout)
+    except requests.exceptions.Timeout:
+        raise ReplayNotAvailable(
+            f"The LoL client stopped responding ({path})."
+        )
+    except requests.exceptions.ConnectionError:
+        raise ReplayNotAvailable(
+            f"Could not reach the LoL client ({path})."
+        )
 
 
 def wait_for_replay():
@@ -51,7 +80,7 @@ def wait_for_replay():
                     continue
                 print("Replay detected!\n")
                 return
-        except (requests.ConnectionError, requests.Timeout):
+        except ReplayNotAvailable:
             pass
         time.sleep(2)
 
@@ -69,6 +98,14 @@ def set_playback(**fields):
     _post("/replay/playback", fields)
 
 
+def get_game_data():
+    """Return the gameData object from allgamedata, or {} on failure."""
+    try:
+        return _get("/liveclientdata/allgamedata").get("gameData", {})
+    except (ReplayNotAvailable, KeyError, TypeError, AttributeError):
+        return {}
+
+
 def get_render():
     return _get("/replay/render")
 
@@ -78,28 +115,33 @@ def set_render(**fields):
 
 
 def _attach_camera(champion_name, summoner_name=None):
-    """Attempt to attach the camera to a champion. Returns the render state on success."""
-    # Try multiple name formats: champion name, summoner name, lowercase variants
+    """Attach the camera to a champion, retrying up to 3 times with a delay between attempts.
+
+    Tries several name formats each round (champion name, summoner name, lowercase, no-space).
+    Returns the final render state whether or not attachment succeeded.
+    """
     candidates = [champion_name]
     if summoner_name:
         candidates.append(summoner_name)
     candidates += [champion_name.lower(), champion_name.replace(" ", "")]
 
-    for name in candidates:
-        _post("/replay/render", {"selectionName": name, "cameraAttached": True})
-        time.sleep(0.3)
-        state = get_render()
-        sel = state.get("selectionName", "")
-        attached = state.get("cameraAttached", False)
-        if sel and attached and sel.lower() != "":
-            print(f"  Camera attached via selectionName='{sel}' (tried '{name}')")
-            return state
+    for attempt in range(3):
+        for name in candidates:
+            _post("/replay/render", {"selectionName": name, "cameraAttached": True})
+            time.sleep(0.3)
+            state = get_render()
+            if state.get("cameraAttached") and state.get("selectionName", "").strip():
+                print(f"  Camera attached to '{state['selectionName']}'")
+                return state
 
-    # Print full render state for debugging
+        if attempt < 2:
+            print(f"  Not attached yet, retrying... ({attempt + 1}/3)")
+            time.sleep(1.5)
+
     state = get_render()
-    print(f"  Warning: camera may not be attached. Render state:")
-    for k in ["selectionName", "cameraAttached", "cameraMode", "cameraPosition"]:
-        print(f"    {k}: {state.get(k)}")
+    print(f"  Warning: failed to attach camera after 3 attempts.")
+    print(f"    selectionName: {state.get('selectionName')!r}")
+    print(f"    cameraAttached: {state.get('cameraAttached')}")
     return state
 
 
@@ -109,28 +151,27 @@ def collect_positions(champion_name, speed=8, poll_interval=0.1, summoner_name=N
     Returns a list of (game_time, x, y) tuples.
     Camera is attached to the champion; cameraPosition (x, z) = game map (x, y).
     """
-    # Rewind and pause
-    set_playback(time=0.5, paused=True)
-    time.sleep(1)
+    # Play from a few seconds in at 1× speed so champion entities are loaded
+    # before the attach attempt (attaching at t=0 while paused fails to select anything)
+    set_playback(time=5.0, paused=False, speed=1.0)
+    time.sleep(3)  # let the engine render ~3 seconds of live gameplay
 
-    # Attach camera
+    # Attach camera now that the champion is on the map
     print(f"Attaching camera to {champion_name}...")
     _attach_camera(champion_name, summoner_name)
 
-    # Advance a few seconds so the champion has spawned, verify camera is moving
-    set_playback(speed=1.0, paused=False)
-    time.sleep(2)
+    # Verify the camera is actually following the champion
     pos_a = get_render().get("cameraPosition", {})
-    time.sleep(2)
+    time.sleep(1.5)
     pos_b = get_render().get("cameraPosition", {})
 
     if pos_a == pos_b:
-        print(f"  Warning: camera position is not changing — champion may not be tracked.")
+        print(f"  Warning: camera is not following {champion_name} — position is not changing.")
         print(f"  Position: {pos_a}")
     else:
-        print(f"  Camera is tracking. Position range: {pos_a} -> {pos_b}")
+        print(f"  Camera is tracking.")
 
-    # Rewind and run at full speed
+    # Rewind to the start and run at full collection speed
     set_playback(time=0.5, paused=True)
     time.sleep(0.5)
     set_playback(speed=float(speed), paused=False)
@@ -163,7 +204,7 @@ def collect_positions(champion_name, speed=8, poll_interval=0.1, summoner_name=N
                 break
 
             time.sleep(poll_interval)
-        except (requests.ConnectionError, requests.Timeout):
+        except ReplayNotAvailable:
             print("\n  Connection lost — stopping collection.")
             break
 
@@ -173,15 +214,27 @@ def collect_positions(champion_name, speed=8, poll_interval=0.1, summoner_name=N
 
 
 
-def save_positions(positions, champion_name):
+def save_positions(positions, champion_name, summoner_name=""):
+    """Save positions to cache, wrapped with metadata for output filename construction."""
     os.makedirs(CACHE_DIR, exist_ok=True)
     path = os.path.join(CACHE_DIR, f"positions_{champion_name}.json")
     with open(path, "w") as f:
-        json.dump(positions, f)
+        json.dump({"meta": {"summoner": summoner_name, "champion": champion_name},
+                   "positions": positions}, f)
     print(f"Saved position data -> {path}")
     return path
 
 
 def load_positions(path):
+    """Load positions from cache. Returns (meta_dict, positions_list).
+
+    Handles both the new dict format {"meta": ..., "positions": [...]}
+    and the old raw-list format for backward compatibility.
+    """
     with open(path) as f:
-        return json.load(f)
+        data = json.load(f)
+    if isinstance(data, dict):
+        return data.get("meta", {}), data.get("positions", [])
+    # Old format: raw list — derive champion name from filename
+    name = os.path.splitext(os.path.basename(path))[0].replace("positions_", "")
+    return {"summoner": "", "champion": name}, data

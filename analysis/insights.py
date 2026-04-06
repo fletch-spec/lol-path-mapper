@@ -302,7 +302,7 @@ def per_15s_breakdown(timeline, participant_id, positions, team):
         pf = frame["participantFrames"].get(str(participant_id), {})
         cs = pf.get("minionsKilled", 0) + pf.get("jungleMinionsKilled", 0)
         if cs > prev_cs:
-            farming_minutes.add(int(frame["timestamp"] / 60000))
+            farming_minutes.add(int(frame["timestamp"] / 60000))  # ms → whole-minute bucket
         prev_cs = cs
 
     duration_sec = frames[-1]["timestamp"] / 1000.0

@@ -17,6 +17,7 @@ _MAP_Y_UP = 140 / 2048  # fraction of image height to subtract from py
 
 def game_to_pixel(game_x, game_y, img_w, img_h):
     px = int((game_x - GAME_X_MIN) / (GAME_X_MAX - GAME_X_MIN) * img_w)
+    # Y is flipped: game coords increase northward, pixel rows increase downward
     py = int((1.0 - (game_y - GAME_Y_MIN) / (GAME_Y_MAX - GAME_Y_MIN)) * img_h)
     py -= round(_MAP_Y_UP * img_h)
     return (max(0, min(px, img_w - 1)), max(0, min(py, img_h - 1)))
@@ -38,6 +39,7 @@ def split_segments(positions, threshold=RECALL_THRESHOLD):
         return []
     segments = []
     current = [positions[0]]
+    # Compare each consecutive pair to detect jumps (teleports/recalls)
     for prev, curr in zip(positions, positions[1:]):
         dist = math.hypot(curr[0] - prev[0], curr[1] - prev[1])
         if dist > threshold:

@@ -16,7 +16,7 @@ import glob
 import json
 import os
 
-CACHE_DIR = os.path.join(os.path.dirname(__file__), ".dev", "cache")
+CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "cache")
 
 
 def load_timeline(path):
@@ -58,7 +58,9 @@ def extract_ward_events(timeline):
             if pos:
                 x, y = pos["x"], pos["y"]
             else:
-                # Fallback: use the creator's frame snapshot position
+                # Fallback: use the creator's frame snapshot position.
+                # frame_pos can be None if this participant had no entry in the
+                # frame's participantFrames — possible in some older timeline versions.
                 frame_pos = frame_positions.get(creator_id)
                 if frame_pos is None:
                     continue
@@ -102,6 +104,21 @@ def match_json_path_from_timeline(timeline_path):
     """Derive the expected match JSON path from a timeline path."""
     match_id = match_id_from_path(timeline_path)
     return os.path.join(CACHE_DIR, f"match_{match_id}.json")
+
+
+def summoner_for_champion(match_json_path, champion_name):
+    """Return the in-game name (riotIdGameName / summonerName) for a champion in the match JSON.
+
+    Returns an empty string if the match JSON is absent or the champion isn't found.
+    """
+    if not match_json_path or not os.path.exists(match_json_path):
+        return ""
+    with open(match_json_path) as f:
+        match = json.load(f)
+    for p in match.get("info", {}).get("participants", []):
+        if p.get("championName", "").lower() == champion_name.lower():
+            return p.get("riotIdGameName") or p.get("summonerName") or ""
+    return ""
 
 
 def build_participant_map(match_json_path=None, players=None):

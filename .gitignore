@@ -1,9 +1,20 @@
 # Generated output images
 /outputs/
 
+# Cache (downloaded/generated game data)
+/cache/
+cache/api_key.txt
+
+# Replay files
+/replays/*.rofl
+
+# Dev assets (map image, replay files, API key, calibration data)
+/.dev/
+
 # Python bytecode cache
 __pycache__/
 *.py[cod]
 
 .git
 /.claude
+summoners_rift.png

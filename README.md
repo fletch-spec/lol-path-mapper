@@ -1,262 +1,270 @@
 # League of Legends Replay Visualizer
 
-Records and analyses a champion's game from a LoL replay. Produces map overlays and charts from both the live replay API and Riot's match timeline JSON.
+Records and analyses a champion's game from a LoL replay. Produces map overlays and charts from the live replay API and Riot's match timeline.
 
-## Overview
+---
 
-While a replay is playing, the tool polls the local LoL replay API to collect position samples for a chosen champion. It renders those positions as a smooth blue→red gradient path on the Summoner's Rift map. Additional outputs — ward maps, XP heatmap, team fight clusters, activity chart, lane aggression — are generated from Riot Match API v5 data cached in `.dev/cache/`.
+## Quick Start
 
-## Requirements
+> Everything you need to go from a replay file to rendered outputs.
 
-- [Python](https://www.python.org/downloads/) 3.x
-- `pip install -r requirements.txt`
-- A Summoner's Rift map image at `.dev/summoners_rift.png` (8192×8192 recommended)
-- League of Legends client with the replay API enabled (see [Setup](#setup))
-- Riot API timeline JSON and match JSON saved to `.dev/cache/` (for insights)
-
-## Setup
+### 1. Install
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-Place your `summoners_rift.png` map image in the `.dev/` directory.
+Place `summoners_rift.png` in the project root (8192×8192 recommended).
 
-### Enable the Replay API
+### 2. Add your replays
 
-The LoL client does not expose the replay API by default. To enable it:
+Copy `.rofl` replay files into the `replays/` folder, then check what you have:
 
-1. Close the League of Legends client completely.
-2. Open `game.cfg`, located at:
-   ```
-   C:\Riot Games\League of Legends\Config\game.cfg
-   ```
-3. Find the `[General]` section and add (or update) this line:
-   ```ini
-   [General]
-   EnableReplayApi=1
-   ```
-4. Save the file and relaunch the client.
+```bash
+python cache.py
+```
 
-> If the API is not enabled, the tool will detect the game but print:
-> `Game detected but Replay API not enabled.`
+### 3. Fetch game data (optional but recommended)
+
+This downloads champion names, ward events, and match info from Riot's API automatically.
+
+Get a free API key at **https://developer.riotgames.com** (log in → scroll to bottom → Generate API Key), then:
+
+```bash
+python cache.py --load
+```
+
+You'll be prompted to paste your key the first time. It's saved for future runs.
+Development keys expire every 24 hours — just run `--load` again and paste a new one when prompted.
+
+### 4. Enable the Replay API in the LoL client
+
+Do this once. Open:
+```
+C:\Riot Games\League of Legends\Config\game.cfg
+```
+Under `[General]`, add:
+```ini
+EnableReplayApi=1
+```
+Save and relaunch the client.
+
+### 5. Record a replay
+
+Open a `.rofl` file in the LoL client, then run:
+
+```bash
+python main.py
+```
+
+Select your champion when prompted. The tool plays through the replay at speed and saves a path image to `outputs/`. Ward maps are included automatically if game data was loaded in step 3.
+
+### 6. Generate analysis and ward maps
+
+```bash
+python cache.py OC1_000000000 --champion Ahri
+python cache.py OC1_000000000
+```
+
+Replace `OC1_697009636` with your match ID and `Ahri` with the champion you recorded.
+Run `python cache.py <match_id>` to get these commands pre-filled for any match.
+
+### 7. Check your outputs
+
+All images are saved to `outputs/<match_id>/<Champion>/`. Open them in any image viewer.
 
 ---
 
-## Usage
+## Tools
 
-### Record from a replay — `main.py`
+### `cache.py` — Game index and command reference
 
-Open a replay in the LoL client, then run:
+The starting point for everything. Shows all your replays with game info (duration, patch, winner) and provides copy-paste commands for each match.
+
+```bash
+python cache.py                  # list all replays and recorded matches
+python cache.py OC1_697009636    # full detail: roster, cache status, commands
+python cache.py --load           # fetch match + timeline data from Riot API
+python cache.py --scan           # index replay files without API calls
+```
+
+**`--load`** requires a Riot API key — you'll be prompted to paste it on first run. It fetches match and timeline JSON for every replay in `replays/` that doesn't have it yet, then updates `games.json` with champion names, queue type, and game metadata.
+
+Development keys from the [Riot Developer Portal](https://developer.riotgames.com/) work fine — they allow 100 requests per 2 minutes, and `--load` paces itself automatically.
+
+`games.json` is updated automatically every time you run any tool. The `← recorded` marker appears for any participant who has a positions file in `cache/`.
+
+---
+
+### `main.py` — Record from a live replay
+
+Open a `.rofl` replay in the LoL client, then run:
 
 ```bash
 python main.py [options]
 ```
 
-The tool waits for the replay API, lists all players, and prompts you to pick one. It attaches the camera to the selected champion, collects positions until the replay ends, caches them, and renders the output PNG.
+The tool identifies the match automatically from the running replay, loads any cached timeline, lists all ten players, and prompts you to pick one (or pass `--player` to skip the prompt). It attaches the camera, plays through at high speed, saves position samples to `cache/`, and renders the path and ward images.
 
 **Options:**
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--player` | *(prompt)* | Champion name, summoner name, or list number |
-| `--speed` | `8` | Replay playback speed multiplier |
-| `--downscale` | `4` | Output downscale factor (4 → 2048×2048) |
-| `--timeline` | none | Riot timeline JSON for exact ward tracking |
-| `--output` | `outputs/<summoner>_<champion>.png` | Custom output path |
-| `--map` | `.dev/summoners_rift.png` | Map background image |
+| `--player` | *(prompt)* | Champion name, summoner name, or list number (1–10) |
+| `--speed` | `16` | Replay playback speed multiplier |
+| `--downscale` | `4` | Output downscale factor (4 → 2048×2048 from 8192×8192) |
+| `--timeline` | auto | Override the auto-detected timeline path |
+| `--output` | auto | Override output image path |
+| `--map` | `summoners_rift.png` | Map background image |
 
 **Examples:**
 
 ```bash
-# Interactive player selection
-python main.py
-
-# Path + ward locations in the same run
-python main.py --player Ahri --timeline .dev/cache/timeline_OC1_697009636.json
-
-# Select by champion name, faster playback
-python main.py --player Ahri --speed 16
-
-# Full resolution output
-python main.py --player 3 --downscale 1
+python main.py --player Ahri      # record Ahri (timeline auto-detected)
+python main.py                    # interactive player selection
+python main.py --player Ahri --speed 32
+python main.py --player 3 --downscale 1   # full 8192×8192 output
 ```
 
-When `--timeline` is provided, a second image is saved alongside the path image:
-- `outputs/<summoner>_<champion>.png` — movement path
-- `outputs/<summoner>_<champion>_wards.png` — ward placement dots (exact positions from timeline)
-
----
-
-### Re-render from cached data — `render.py`
-
-If you've already recorded a replay, re-render without replaying it:
-
-```bash
-# Re-render the most recent cached positions
-python render.py
-
-# Re-render a specific cache file
-python render.py .dev/cache/positions_Ahri.json
-
-# Re-render at higher resolution
-python render.py .dev/cache/positions_Ahri.json --downscale 2
-```
-
----
-
-### Ward visualization — `wards.py`
-
-Generate a ward location map and vision heatmap from a Riot match timeline JSON:
-
-```bash
-# Auto-detect the most recent timeline in .dev/cache/
-python wards.py
-
-# Specific timeline file
-python wards.py .dev/cache/timeline_OC1_697009636.json
-
-# Blue team only, higher resolution
-python wards.py .dev/cache/timeline_OC1_697009636.json --team blue --downscale 2
-
-# Single player (participant ID 1-10)
-python wards.py .dev/cache/timeline_OC1_697009636.json --participant 5
-```
-
-Produces two images in `outputs/`:
-- `<match_id>_wards.png` — dots at each ward placement (blue team = blue, red team = red)
-- `<match_id>_vision.png` — heatmap of accumulated vision coverage (~900 unit radius per ward)
-
-Exact ward positions are read directly from `WARD_PLACED` events in the Riot Match API v5 timeline. Older files without position data fall back to the creator's nearest 60-second frame position automatically.
-
-**Options:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `timeline` | most recent `.dev/cache/timeline_*.json` | Riot match timeline JSON |
-| `--team` | `both` | `blue`, `red`, or `both` |
-| `--participant` | all | Single participant ID (1–10), overrides `--team` |
-| `--downscale` | `4` | Output downscale factor |
-| `--no-cache` | false | Re-extract even if ward cache exists |
-
----
-
-### Match insights — `analyze.py`
-
-Generate four analytical images for a single player using the Riot timeline JSON. Requires a Riot API match JSON and optionally a cached positions file from `main.py`.
-
-```bash
-# By champion name (auto-finds participant from match JSON)
-python analyze.py .dev/cache/timeline_OC1_697009636.json --champion Ahri
-
-# By participant ID
-python analyze.py .dev/cache/timeline_OC1_697009636.json --participant 5
-
-# Higher resolution output
-python analyze.py .dev/cache/timeline_OC1_697009636.json --champion Ahri --downscale 2
-```
-
-Produces four images in `outputs/` and a stats summary in the console.
-
-**Options:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `timeline` | most recent `.dev/cache/timeline_*.json` | Riot match timeline JSON |
-| `--champion` | — | Champion name (case-insensitive) |
-| `--participant` | — | Participant ID 1–10 (alternative to --champion) |
-| `--positions` | auto | Path to positions JSON (overrides auto-detect) |
-| `--map` | `.dev/summoners_rift.png` | Map background image |
-| `--downscale` | `4` | Output downscale factor |
-
-#### `<match_id>_<champion>_activity.png` — Activity chart
-
-A four-panel dark-theme chart:
-
-- **CS per minute** — bar chart with average dashed line
-- **Event timeline** — exact-timestamp markers for kills (▲), deaths (✕), assists (◆), towers (▼), objectives (★), recalls (●). These come directly from event timestamps, not 60-second frame snapshots.
-- **Activity strip** — 15-second resolution colour bands: Farming / Fighting / Base / Roaming
-- **Gold per minute** — bar chart
-- **Stats panel** (right column) — KDA, CS, gold, tower/objective participations, recalls
-
-#### `<match_id>_<champion>_xp_heatmap.png` — XP heatmap
-
-Shows where the player earned XP across the map. Each minute's XP gain is distributed across all position samples from that 60-second window (~40–80 samples), giving ~1000–2000 weighted data points per game rather than one blob per minute. Rendered with the plasma colourmap (dark purple = low, yellow = high) and log normalization so lane farming stays visible alongside objective spikes. Includes a "Low XP / High XP" colorbar.
-
-> Requires `positions_<champion>.json` from a recorded replay.
-
-#### `<match_id>_<champion>_fights.png` — Team fight clusters
-
-All champion kills from the match are grouped into skirmishes (2–3 kills) and team fights (4+ kills). Each cluster appears as a numbered circle on the map:
-
-- Circle **radius** encodes kill count (cube-root scale — explained in the on-image legend)
-- Circle **colour**: blue = blue team won, red = red team won, grey = even
-- **Kill dots** inside the circle show exactly where each death occurred, coloured by the victim's team (blue dot = blue player died, red dot = red player died)
-- Team fights (4+ kills) are filled; skirmishes are outlined and semi-transparent
-- A **legend panel** (bottom-left) lists every fight: `# | TF/SK | time | ×kills | winner`
-
-The circle numbers match the legend rows and the console output, making it easy to cross-reference all three.
-
-#### `<match_id>_<champion>_lane.png` — Lane aggression
-
-Shows where the player was positioned during the first 15 minutes:
-
-- **Orange density cloud** — every sampled position during the laning phase
-- **Orange circle marker** — average position across all laning samples
-- **Aggression score (0–100)** — measures how far forward the player was positioned relative to the two bases. 0 = camped under own tower, 50 = neutral (river), 100 = always at enemy tower.
-- A gauge bar and "Defensive ◀ ▶ Aggressive" axis labels are drawn on the image for quick reading.
-
-> Requires `positions_<champion>.json` from a recorded replay.
-
----
-
-## Data sources
-
-| Data | Source | How to obtain |
-|------|--------|---------------|
-| Position samples | Live replay API (`/replay/render`) | Run `main.py` while a replay is open |
-| Ward placements | Riot Match API v5 timeline | Save as `.dev/cache/timeline_<matchId>.json` |
-| Participant names | Riot Match API v5 match data | Save as `.dev/cache/match_<matchId>.json` |
-
-The Riot Match API requires an API key from the [Riot Developer Portal](https://developer.riotgames.com/).
-
----
-
-## Output files
+**Outputs** (in `outputs/<match_id>/Ahri/`):
 
 | File | Description |
 |------|-------------|
-| `outputs/<summoner>_<champion>.png` | Movement path (blue start → red end) |
-| `outputs/<summoner>_<champion>_wards.png` | Single-player ward placement map |
-| `outputs/<match_id>_wards.png` | All-player ward map from `wards.py` |
-| `outputs/<match_id>_vision.png` | Ward vision heatmap |
-| `outputs/<match_id>_<champion>_activity.png` | Activity & stats chart |
-| `outputs/<match_id>_<champion>_xp_heatmap.png` | XP gain heatmap |
-| `outputs/<match_id>_<champion>_fights.png` | Team fight cluster map |
-| `outputs/<match_id>_<champion>_lane.png` | Lane aggression map |
-| `.dev/cache/positions_<champion>.json` | Cached position samples |
-| `.dev/cache/wards_<match_id>.json` | Cached ward events |
+| `path.png` | Movement path, blue start → red end |
+| `wards.png` | Ward placement dots (rendered when timeline is available) |
+
+**Cache written:** `cache/positions_<Champion>.json`
 
 ---
 
-## Project structure
+### `render.py` — Re-render from cached positions
+
+Re-generate the path image without re-running a replay:
+
+```bash
+python render.py                                        # most recent positions file
+python render.py cache/positions_Ahri.json
+python render.py cache/positions_Ahri.json --downscale 2
+```
+
+**Output:** `outputs/<match_id>/Champion/path.png`
+
+---
+
+### `wards.py` — Ward placement visualization
+
+Generate a ward dot map and vision heatmap from a Riot timeline JSON.
+
+```bash
+python wards.py cache/timeline_OC1_697009636.json
+python wards.py cache/timeline_OC1_697009636.json --team blue
+python wards.py cache/timeline_OC1_697009636.json --participant 8
+python wards.py cache/timeline_OC1_697009636.json --start 0 --end 15
+```
+
+**Options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `timeline` | most recent `cache/timeline_*.json` | Riot match timeline JSON |
+| `--team` | `both` | `blue`, `red`, or `both` |
+| `--participant` | all | Single participant ID (1–10); overrides `--team` |
+| `--start` | `0` | Exclude wards placed before this many minutes |
+| `--end` | end | Exclude wards placed after this many minutes |
+| `--downscale` | `4` | Output downscale factor |
+| `--no-cache` | false | Re-extract from timeline even if ward cache exists |
+
+**Outputs** (in `outputs/<match_id>/`):
+
+| Scenario | Files |
+|----------|-------|
+| Both teams (default) | `wards_team.png`, `vision_team.png` |
+| Single team | `wards_blue.png`, `vision_blue.png` |
+| Single player | `<Champion>/wards.png`, `<Champion>/vision.png` |
+| With time window | `wards_team_0m-15m.png`, etc. |
+
+---
+
+### `analyze.py` — Match insights
+
+Generate four analytical images for a single player.
+
+```bash
+python analyze.py cache/timeline_OC1_697009636.json --champion Ahri
+python analyze.py cache/timeline_OC1_697009636.json --participant 5
+python analyze.py cache/timeline_OC1_697009636.json --champion Ahri --downscale 2
+```
+
+**Options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `timeline` | most recent `cache/timeline_*.json` | Riot match timeline JSON |
+| `--champion` | — | Champion name (case-insensitive) |
+| `--participant` | — | Participant ID 1–10 (alternative to `--champion`) |
+| `--positions` | auto | Positions JSON path (overrides auto-detect) |
+| `--map` | `summoners_rift.png` | Map background image |
+| `--downscale` | `4` | Output downscale factor |
+
+**Output images** (in `outputs/<match_id>/<Champion>/`):
+
+| File | Description |
+|------|-------------|
+| `activity.png` | Activity strip, CS/gold per minute, event timeline, stats panel |
+| `xp_heatmap.png` | Where XP was earned on the map (requires positions from `main.py`) |
+| `fights.png` | Team fight and skirmish clusters across the map |
+| `lane.png` | Laning-phase positions and aggression score (requires positions from `main.py`) |
+
+---
+
+## File structure
 
 ```
-main.py               Entry point: connect to replay, record positions, render path + wards
-replay_api.py         LoL replay API client (position polling, camera control, playback)
-path_renderer.py      PIL path rendering; coordinate transform (game units -> pixels)
-render.py             Re-render path from cached position data
+replays/              Add .rofl replay files here
 
-ward_analyzer.py      Extract ward events from Riot timeline JSON; participant mapping
-ward_renderer.py      PIL ward dot map and vision heatmap rendering
-wards.py              Entry point: generate ward visualizations from timeline
+cache/                Auto-managed — do not edit manually
+  games.json            Index of all cached matches
+  api_key.txt           Your Riot API key (never committed)
+  timeline_<id>.json    Riot timeline data
+  match_<id>.json       Riot match data
+  positions_<champ>.json  Recorded position samples
+  wards_<id>.json       Pre-extracted ward events
 
-insights.py           Pure-computation analysis: XP locations, activity classification,
-                        lane aggression score, team fight clustering, event timestamps
-insights_renderer.py  PIL/matplotlib rendering for all insight outputs
-analyze.py            Entry point: generate all four insight images for a player
-
-requirements.txt      Python dependencies (Pillow, requests, matplotlib, numpy)
-.dev/                 gitignored: map image, timeline/match JSON cache, API keys
-outputs/              gitignored: generated PNG images
+outputs/              Generated PNG images
+  <match_id>/
+    <Champion>/
+      path.png  wards.png  activity.png  xp_heatmap.png  fights.png  lane.png
+    wards_team.png  vision_team.png
 ```
+
+---
+
+## Technical reference
+
+### Data sources
+
+| Data | Source | How to get it |
+|------|--------|---------------|
+| Position samples | Local replay API at `https://127.0.0.1:2999` | Run `main.py` while a replay is open |
+| Ward events, kills, XP | Riot Match API v5 timeline | `python cache.py --load` |
+| Champion names, metadata | Riot Match API v5 match | `python cache.py --load` |
+
+### Enable the Replay API
+
+The LoL client does not expose the replay API by default:
+
+1. Close the League of Legends client completely.
+2. Open `C:\Riot Games\League of Legends\Config\game.cfg`
+3. Under `[General]`, add:
+   ```ini
+   EnableReplayApi=1
+   ```
+4. Save and relaunch.
+
+> If the API is not enabled, `main.py` will print: `Game detected but Replay API not enabled.`
+
+### Riot API key
+
+`cache.py --load` prompts for your key on first run and saves it to `cache/api_key.txt` (gitignored). You can also set `RIOT_API_KEY` as an environment variable. Development keys expire every 24 hours — run `--load` again and paste a new key when prompted.
+
+Match IDs use the format `<platform>_<numericId>` (e.g. `OC1_697009636`). The platform prefix matches the region: `NA1`, `EUW1`, `OC1`, etc.
