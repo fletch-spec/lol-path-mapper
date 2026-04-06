@@ -15,18 +15,6 @@ Usage:
     python wards.py ... --participant 5
     python wards.py ... --downscale 2
     python wards.py ... --no-cache
-
-    **Options:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `timeline` | most recent `cache/timeline_*.json` | Riot match timeline JSON |
-| `--team` | `both` | `blue`, `red`, or `both` |
-| `--participant` | all | Single participant ID (1–10); overrides `--team` |
-| `--start` | `0` | Exclude wards placed before this many minutes |
-| `--end` | end | Exclude wards placed after this many minutes |
-| `--downscale` | `4` | Output downscale factor |
-| `--no-cache` | false | Re-extract from timeline even if ward cache exists |
 """
 
 import argparse

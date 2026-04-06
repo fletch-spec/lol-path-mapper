@@ -15,17 +15,6 @@ Usage:
     python analyze.py cache/timeline_OC1_697009636.json --champion Ahri
     python analyze.py cache/timeline_OC1_697009636.json --participant 5
     python analyze.py cache/timeline_OC1_697009636.json --champion Ahri --downscale 2
-
-**Options:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `timeline` | most recent `cache/timeline_*.json` | Riot match timeline JSON |
-| `--champion` | — | Champion name (case-insensitive) |
-| `--participant` | — | Participant ID 1–10 (alternative to `--champion`) |
-| `--positions` | auto | Positions JSON path (overrides auto-detect) |
-| `--map` | `summoners_rift.png` | Map background image |
-| `--downscale` | `4` | Output downscale factor |
 """
 
 import json
