@@ -15,6 +15,17 @@ Usage:
     python main.py --player Ahri --speed 32
     python main.py --player 3 --downscale 1
     python main.py --player Ahri --timeline cache/timeline_OC1_697009636.json
+
+**Options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--player` | *(prompt)* | Champion name, summoner name, or list number (1–10) |
+| `--speed` | `16` | Replay playback speed multiplier |
+| `--downscale` | `4` | Output downscale factor (4 → 2048×2048 from 8192×8192) |
+| `--timeline` | auto | Override the auto-detected timeline path |
+| `--output` | auto | Override output image path |
+| `--map` | `summoners_rift.png` | Map background image |
 """
 
 import argparse

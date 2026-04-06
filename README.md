@@ -22,10 +22,10 @@ Save and relaunch the client.
 
 ### 2. Install
 
+Open a command prompt in this repository `/lol-path-mapper`:
 ```bash
 python -m pip install -r requirements.txt
 ```
-
 
 ### 3. Add your replays
 
@@ -35,9 +35,9 @@ Copy `.rofl` replay files into the `replays/` folder, then check what you have:
 python cache.py
 ```
 
-### 4. Fetch game data (optional but recommended)
+### 4. Fetch game data (recommended but optional)
 
-This downloads champion names, ward events, and match info from Riot's API automatically.
+This downloads match info from Riot's API automatically.
 
 Get a free API key at **https://developer.riotgames.com** (log in → scroll to bottom → Generate API Key), then:
 
@@ -59,7 +59,7 @@ python main.py
 
 Select your champion when prompted. The tool plays through the replay at speed and saves a path image to `outputs/`. Ward maps are included automatically if game data was loaded in step 3.
 
-### 6. Generate analysis and ward maps
+### 6. Generate analysis and ward maps (uses Riot)
 
 ```bash
 python cache.py OC1_000000000 --champion Ahri
@@ -106,17 +106,6 @@ python main.py [options]
 
 The tool identifies the match automatically from the running replay, loads any cached timeline, lists all ten players, and prompts you to pick one (or pass `--player` to skip the prompt). It attaches the camera, plays through at high speed, saves position samples to `cache/`, and renders the path and ward images.
 
-**Options:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--player` | *(prompt)* | Champion name, summoner name, or list number (1–10) |
-| `--speed` | `16` | Replay playback speed multiplier |
-| `--downscale` | `4` | Output downscale factor (4 → 2048×2048 from 8192×8192) |
-| `--timeline` | auto | Override the auto-detected timeline path |
-| `--output` | auto | Override output image path |
-| `--map` | `summoners_rift.png` | Map background image |
-
 **Examples:**
 
 ```bash
@@ -162,18 +151,6 @@ python wards.py cache/timeline_OC1_697009636.json --participant 8
 python wards.py cache/timeline_OC1_697009636.json --start 0 --end 15
 ```
 
-**Options:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `timeline` | most recent `cache/timeline_*.json` | Riot match timeline JSON |
-| `--team` | `both` | `blue`, `red`, or `both` |
-| `--participant` | all | Single participant ID (1–10); overrides `--team` |
-| `--start` | `0` | Exclude wards placed before this many minutes |
-| `--end` | end | Exclude wards placed after this many minutes |
-| `--downscale` | `4` | Output downscale factor |
-| `--no-cache` | false | Re-extract from timeline even if ward cache exists |
-
 **Outputs** (in `outputs/<match_id>/`):
 
 | Scenario | Files |
@@ -194,17 +171,6 @@ python analyze.py cache/timeline_OC1_697009636.json --champion Ahri
 python analyze.py cache/timeline_OC1_697009636.json --participant 5
 python analyze.py cache/timeline_OC1_697009636.json --champion Ahri --downscale 2
 ```
-
-**Options:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `timeline` | most recent `cache/timeline_*.json` | Riot match timeline JSON |
-| `--champion` | — | Champion name (case-insensitive) |
-| `--participant` | — | Participant ID 1–10 (alternative to `--champion`) |
-| `--positions` | auto | Positions JSON path (overrides auto-detect) |
-| `--map` | `summoners_rift.png` | Map background image |
-| `--downscale` | `4` | Output downscale factor |
 
 **Output images** (in `outputs/<match_id>/<Champion>/`):
 
