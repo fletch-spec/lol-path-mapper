@@ -2,7 +2,7 @@
 /outputs/
 
 # Cache (downloaded/generated game data)
-/cache/
+cache/*.json
 cache/api_key.txt
 
 # Replay files
