@@ -53,7 +53,7 @@ Development keys expire every 24 hours — just run `--load` again and paste a n
 
 Open a `.rofl` file in the LoL client, then run:
 
-[BUG] Camera must be assigned manually after tool starts 16x speed replay. 
+[BUG](https://github.com/fletch-spec/lol-path-mapper/issues/1) - Camera must be assigned manually after tool starts 16x speed replay. 
 ```bash
 python main.py
 ```
