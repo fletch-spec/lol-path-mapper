@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/dev/league-of-legends/**)",
+      "Bash(python -c ':*)",
+      "WebFetch(domain:wiki.leagueoflegends.com)",
+      "Bash(rm -f /c/dev/league-of-legends/champion_renders/renders/*.png)"
+    ]
+  }
+}
