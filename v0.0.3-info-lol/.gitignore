@@ -1,0 +1,263 @@
+# =========================================================================
+# The Summoner's Chronicle - Git Ignore Configuration
+# =========================================================================
+
+# Configuration Files (SENSITIVE - DO NOT COMMIT)
+# ==================================================
+development.cfg.local
+*.cfg.local
+.env
+.env.local
+.env.*.local
+secrets.json
+credentials.json
+
+# Environment-specific files
+.vscode/settings.json
+.idea/workspace.xml
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Python
+# ==================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+htmlcov/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Node.js / Frontend
+# ==================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+.npmrc
+.yarnrc
+
+# Build outputs
+# ==================================================
+dist/
+build/
+.next/
+.nuxt/
+out/
+.cache/
+.vuepress/dist/
+.serverless/
+.fusebox/
+.dynamodb/
+.tern-port
+
+# IDEs
+# ==================================================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.iml
+.netrc
+.project
+.pydevproject
+.settings/
+*.sublime-workspace
+.history/
+
+# OS
+# ==================================================
+.DS_Store
+.DS_Store?
+._*
+.AppleDouble
+.LSOverride
+*.swp
+*.swo
+*~
+.thumb
+Thumbs.db
+desktop.ini
+
+# Temporary files
+# ==================================================
+*.tmp
+*.temp
+*.log
+logs/
+*.bak
+*.orig
+.*.swp
+*.~
+tmp*.cfg
+
+# Runtime files
+# ==================================================
+*.db
+*.sqlite
+*.sqlite3
+data/uploads/
+data/outputs/
+data/temp/
+data/cache/
+data/*.db
+
+# Test coverage
+# ==================================================
+htmlcov/
+.coverage
+.coverage.*
+.pytest_cache/
+coverage.xml
+
+# Documentation build files
+# ==================================================
+site/
+.docs/build/
+docs/_build/
+
+# Local development
+# ==================================================
+.claude/.cache/
+.claude/logs/*.log
+reports/
+*.local
+
+# API Keys and Credentials (CRITICAL)
+# ==================================================
+# These should NEVER be committed
+*.key
+*.pem
+*.p12
+*.pfx
+*.pub
+.ssh/
+.credentials/
+secrets/
+**/apikeys.*
+**/api_keys.*
+**/credentials.*
+**/tokens.*
+
+# Quality reports (can be generated locally)
+# ==================================================
+.quality-reports/
+quality-*.json
+coverage-*.json
+
+# Lock files (comment out if you want to track them)
+# ==================================================
+# package-lock.json
+# yarn.lock
+
+# Production build artifacts (can be regenerated)
+# ==================================================
+.next/
+.nuxt/
+dist/
+build/
+out/
+
+# Virtual environments
+# ==================================================
+venv/
+ENV/
+env/
+.venv/
+
+# IDE temporary files
+# ==================================================
+.vscode/launch.json
+.idea/runConfigurations/
+.idea/shelf/
+*.iws
+
+# Temporary test files
+# ==================================================
+test_*.json
+test_*.db
+__pycache__/
+
+# Miscellaneous
+# ==================================================
+.env.prod
+.env.staging
+.env.test
+*.pem
+*.crt
+*.csr
+*.key
+.aws/credentials
+.aws/config
+
+# CI/CD logs
+# ==================================================
+.github/workflows/logs/
+.gitlab-ci.log
+
+# Debugging
+# ==================================================
+.vscode/launch.json
+.vscode/.ropeproject/
+.cache/
+.pytest_cache/
+
+# Ignore all .local files EXCEPT the .example
+# ==================================================
+*.local
+!*.example
+!development.cfg.local.example
+
+# Workspace files
+# ==================================================
+*.code-workspace
+.sublime-project
+.sublime-workspace
+
+# =========================================================================
+# CRITICAL: NEVER COMMIT
+# =========================================================================
+# - API keys (RIOT_API_KEY, JWT_SECRET, etc.)
+# - Database files with real data
+# - Log files containing sensitive information
+# - development.cfg.local or any .local configuration files
+# - SSH keys or certificates
+# - AWS credentials or authentication tokens
+#
+# If you accidentally committed a secret, use git-filter-branch to remove it:
+#   git filter-branch --tree-filter 'rm -f <file>' HEAD
+# =========================================================================
+tmp*.cfg

@@ -1,0 +1,320 @@
+{
+  "version": "1.0.0",
+  "projectName": "The Summoner's Chronicle (info-lol)",
+  "projectSlug": "info-lol",
+  "projectVersion": "0.0.3",
+  "projectRoot": "C:\\dev\\league-of-legends\\info-lol-v0.0.3",
+  "description": "Strict access control policy enforcing quality mandate and scope boundaries",
+
+  "strictMode": {
+    "enabled": true,
+    "enforcedStandards": [
+      "DEVELOPER_AGENT_QUALITY_MANDATE",
+      "SCOPE_REDUCTION_SUMMARY",
+      "task-dependencies",
+      "initialization-tests"
+    ]
+  },
+
+  "fileProtection": {
+    "protected": [
+      "packages/",
+      ".docs/",
+      "utils/"
+    ],
+    "protectedPatterns": [
+      "packages/**/tasks.md",
+      ".docs/**/*.md",
+      ".docs/**/README.md",
+      ".docs/**/*",
+      "*.py"
+    ],
+    "requireChangeLog": true,
+    "changeLogLocation": ".docs/CHANGES.md",
+    "requireJustification": "Any modification to specification or task files must include written justification. Add entry to .docs/CHANGES.md explaining: (1) what changed, (2) why, (3) stakeholder impact.",
+    "allowedModifications": [
+      "Clarifications that do not change scope",
+      "Effort estimate corrections based on implementation experience",
+      "Bug fixes that do not expand scope",
+      "Dependency updates within same milestone"
+    ]
+  },
+
+  "taskManagement": {
+    "requireQualityReport": true,
+    "qualityReportTemplate": ".docs/DEVELOPER_AGENT_QUALITY_MANDATE.md",
+    "qualityReportLocation": "packages/.quality-reports/",
+    "mandatoryFields": [
+      "pillar-1-docstrings",
+      "pillar-2-error-handling",
+      "pillar-3-test-suite",
+      "pillar-4-code-structure",
+      "pillar-5-configuration",
+      "pillar-6-logging",
+      "pillar-7-initialization-tests",
+      "test-coverage-percentage",
+      "all-tests-passing",
+      "checklist-sign-off",
+      "verification-instructions"
+    ],
+    "markTaskCompleteChecklist": [
+      "Quality report completed and filed",
+      "All seven pillars verified compliant",
+      "Test coverage ≥80%",
+      "Initialization tests pass",
+      "No hardcoded configuration values",
+      "All external calls have error handling",
+      "Docstrings and comments complete",
+      "Code structure follows limits (functions ≤50 lines, modules ≤10 functions)"
+    ],
+    "minimumTestCoverage": {
+      "lines": 80,
+      "criticalPaths": 90
+    },
+    "initializationTestRequired": true,
+    "initializationTestMustRunFirst": true
+  },
+
+  "scopeEnforcement": {
+    "enabled": true,
+    "outOfScopeItems": [
+      "localization",
+      "colorblind-palette",
+      "multi-platform-support",
+      "full-wcag-compliance",
+      "extensive-user-testing",
+      "third-party-security-audits",
+      "hiring-and-recruitment"
+    ],
+    "milestoneLockdown": {
+      "MVP": "locked",
+      "Polish": "controlled",
+      "Future": "planning-only"
+    },
+    "preventScopeCreep": true,
+    "scopeCreepDetection": "Any task or file that references out-of-scope items will trigger a warning. Proceed only with explicit justification.",
+    "scopeApprovalRequired": [
+      "Adding new tasks",
+      "Increasing effort estimates beyond +20%",
+      "Adding new features beyond defined zones",
+      "Adding new algorithms or data transformations"
+    ]
+  },
+
+  "codeQuality": {
+    "enforcedStandards": {
+      "docstrings": {
+        "required": true,
+        "modules": "mandatory",
+        "functions": "mandatory",
+        "components": "mandatory",
+        "inlineComments": {
+          "required": true,
+          "rule": "Explain why, not what. No comments like 'increment counter' without context."
+        }
+      },
+      "errorHandling": {
+        "required": true,
+        "rule": "Every external call (API, file I/O, network, database, user input) must have explicit error handling",
+        "noSilentFailures": true,
+        "gracefulDegradation": "Non-critical failures must not crash the system",
+        "requireLogging": true
+      },
+      "testing": {
+        "unitTestsRequired": true,
+        "integrationTestsRequired": true,
+        "initializationTestsRequired": true,
+        "minimumCoverage": 80,
+        "criticalPathCoverage": 90,
+        "allowSkippedTests": false
+      },
+      "codeStructure": {
+        "maxFunctionLength": 50,
+        "maxFunctionsPerModule": 10,
+        "separationOfConcerns": "data-fetching, business-logic, rendering, utilities must be in distinct modules",
+        "circularDependencies": "forbidden"
+      },
+      "configuration": {
+        "noHardcodedValues": true,
+        "rule": "All environment-specific values (paths, API keys, endpoints, timeouts) must be in config files or environment variables",
+        "configValidationRequired": true,
+        "validationRunsOnStartup": true,
+        "defaultConfigTemplateRequired": true
+      },
+      "logging": {
+        "required": true,
+        "severity": ["debug", "info", "warning", "error", "critical"],
+        "mustInclude": ["timestamp", "severity", "context"],
+        "startupLogging": "required",
+        "shutdownLogging": "required",
+        "diagnosticsMode": "required"
+      }
+    }
+  },
+
+  "pythonPolicy": {
+    "fileCreationRequirements": {
+      "rule": "Every Python file creation (except __main__.py) requires corresponding test coverage",
+      "applies_to": "*.py in utils/",
+      "requirement": "For each .py file created, a test_*.py file must exist in utils/tests/",
+      "test_coverage_minimum": {
+        "lines": 80,
+        "criticalPaths": 90
+      },
+      "seven_pillars_required": true,
+      "test_cases_must_cover": [
+        "Pillar 1: Docstrings for all functions/classes/modules",
+        "Pillar 2: Error handling on all external operations",
+        "Pillar 3: Unit tests for normal, edge, and error cases",
+        "Pillar 4: Code structure compliance (functions ≤50 lines)",
+        "Pillar 5: Configuration externalization (no hardcoding)",
+        "Pillar 6: Logging and diagnostics",
+        "Pillar 7: Initialization tests and verification"
+      ]
+    }
+  },
+
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path' | grep -E '(\\.docs/|\\.docs\\\\|packages/|packages\\\\\\\\|utils/|utils\\\\\\\\)' && echo '{\"systemMessage\":\"⚠️ Protected file: Changes to .docs/, packages/, or utils/ require a changelog entry in .docs/CHANGES.md explaining: (1) what changed, (2) why, (3) stakeholder impact.\"}' || true",
+            "statusMessage": "Checking file protection...",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | grep -qE '\\.py$' && grep -qE 'utils/' && (cd 'C:\\dev\\league-of-legends\\info-lol-v0.0.3' && pytest utils/tests/ --cov=utils --cov-fail-under=80 -q 2>&1 | head -20) || echo 'Not a Python file in utils/'",
+            "statusMessage": "Running Python tests...",
+            "timeout": 90,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "Bash(git:commit|git:push)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd 'C:\\dev\\league-of-legends\\info-lol-v0.0.3' && pytest utils/tests/ -q --tb=no && echo '{\"systemMessage\":\"✅ All tests passed - safe to commit\"}' || echo '{\"systemMessage\":\"⚠️ Test failures detected. Review output above before committing.\"}'",
+            "statusMessage": "Pre-commit validation...",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  },
+  "hooksMetadata": {
+    "pre-file-create": {
+      "description": "Enforce test creation policy for new Python files in utils/",
+      "applies_to": "*.py in utils/",
+      "failMessage": "Python files in utils/ require corresponding test_*.py file in utils/tests/. See PYTHON_ORGANIZATION_POLICY.md"
+    },
+    "protected-files": {
+      "description": "Files requiring changelog entries when modified",
+      "paths": [
+        "packages/**/tasks.md",
+        ".docs/**/*.md",
+        "utils/**/*.py"
+      ]
+    },
+    "test-requirements": {
+      "minimum_coverage_lines": 80,
+      "minimum_coverage_critical_paths": 90,
+      "must_include_initialization_tests": true
+    }
+  },
+
+  "reporting": {
+    "qualityReportPath": "packages/.quality-reports/",
+    "changeLogPath": ".docs/CHANGES.md",
+    "requireMonthlyReport": false,
+    "requireWeeklyMetrics": false,
+    "metricsToTrack": [
+      "tasks-completed",
+      "test-coverage-trend",
+      "code-quality-issues-found",
+      "scope-creep-attempts-blocked"
+    ]
+  },
+
+  "developmentWorkflow": {
+    "branchingStrategy": "feature-branches",
+    "requireTaskReference": "Every commit must reference a task from packages/**/tasks.md with format: [TASK-ID] or [ZONE-ID:TASK-ID]",
+    "requireQualityReportReference": "Final commit for a task must reference the quality report: [QR: report-filename]",
+    "commitMessageTemplate": "[TASK-ID] Brief description (max 50 chars)\n\nDetailed explanation:\n- What changed\n- Why it changed\n- Any scope or quality considerations\n\n[QR: quality-report-filename] (for task completion commits)"
+  },
+
+  "aiAssistance": {
+    "enabled": true,
+    "role": "Boilerplate generation, documentation, debugging, test writing",
+    "restrictions": [
+      "AI cannot override quality mandate requirements",
+      "AI-generated code must meet all seven pillars before inclusion",
+      "AI cannot add features out-of-scope",
+      "AI cannot bypass initialization tests or error handling"
+    ],
+    "requireHumanReview": [
+      "Algorithm implementations",
+      "Critical path changes",
+      "Configuration system design",
+      "Test suite design"
+    ]
+  },
+
+  "diagnostics": {
+    "loggingLevel": "info",
+    "logFile": ".claude/logs/claude-development.log",
+    "debugMode": false,
+    "verboseOutput": false,
+    "enableDiagnosticsCommand": true,
+    "diagnosticsShowsInternalState": true
+  },
+
+  "errorHandling": {
+    "strictMode": true,
+    "failFast": false,
+    "requireExplicitRecovery": true,
+    "noSilentFailures": true
+  },
+
+  "versionControl": {
+    "repositoryUrl": "C:\\dev\\league-of-legends\\info-lol-v0.0.3",
+    "protectMainBranch": true,
+    "requirePullRequest": false,
+    "requireReview": false,
+    "tagReleases": true,
+    "releaseTagFormat": "v{major}.{minor}.{patch}"
+  },
+
+  "notifications": {
+    "notifyOnScopeViolation": true,
+    "notifyOnQualityMandateFailure": true,
+    "notifyOnTestCoverageDrops": true,
+    "notifyOnProtectedFileModification": true,
+    "notifyOnDependencyCompletion": true
+  },
+
+  "metadata": {
+    "createdDate": "2026-04-10",
+    "lastUpdated": "2026-04-10",
+    "authority": "Stakeholder Board – The Summoner's Chronicle Project",
+    "enforcedBy": "DEVELOPER_AGENT_QUALITY_MANDATE.md",
+    "policyVersion": "1.0.0",
+    "reviewCycle": "After MVP completion",
+    "projectVersion": "0.0.3",
+    "versionPolicy": ".docs/VERSION_POLICY.md"
+  }
+}

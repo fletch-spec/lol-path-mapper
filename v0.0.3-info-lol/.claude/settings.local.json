@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 /tmp/update_all_tasks.py)",
+      "Bash(python3 \"C:\\\\Users\\\\fletc\\\\AppData\\\\Local\\\\Temp\\\\update_all_tasks.py\")",
+      "Bash(python3)",
+      "Bash(grep -l \"Quality Mandate Required\" \"C:/dev/league-of-legends/info-lol-v0.0.3/packages\"/**/*.md)",
+      "Bash(find \"C:/dev/league-of-legends/info-lol-v0.0.3/packages\" -name \"tasks.md\" -type f -exec grep -l \"Quality Mandate Required\" {} \\\\;)",
+      "Read(//tmp/**)",
+      "Bash(grep -E \"\\\\.md$\")",
+      "Bash(ls -d \"C:/dev/league-of-legends/info-lol-v0.0.3\"/*/)",
+      "Bash(xargs -I {} basename {})",
+      "Bash(cp -r \"C:/dev/league-of-legends/info-lol-v0.0.3/project-management\" \"C:/dev/league-of-legends/info-lol-v0.0.3/.docs/\")",
+      "Bash(cp -r \"C:/dev/league-of-legends/info-lol-v0.0.3/system-guides\" \"C:/dev/league-of-legends/info-lol-v0.0.3/.docs/\")",
+      "Bash(cp -r \"C:/dev/league-of-legends/info-lol-v0.0.3/update-backlog\" \"C:/dev/league-of-legends/info-lol-v0.0.3/.docs/\")",
+      "Bash(ls -d \"C:/dev/league-of-legends/info-lol-v0.0.3/.docs\"/*/)",
+      "Bash(grep -v \"^_\\\\|^$\")",
+      "Bash(rm -f \"C:/dev/league-of-legends/info-lol-v0.0.3/.docs/[internal] SPEC_PACKAGING_AGENT_PROMPT.md\")",
+      "Bash(rm -f \"C:/dev/league-of-legends/info-lol-v0.0.3/.docs/[internal] SPEC_TO_TASK_MARKDOWN_AGENT.txt\")",
+      "Bash(rm -f \"C:/dev/league-of-legends/info-lol-v0.0.3/.docs/[internal] STAKEHOLDER_BOARD_SCOPE_AGENT.txt\")",
+      "Bash(rm -f \"C:/dev/league-of-legends/info-lol-v0.0.3/.docs/[internal] STAKEHOLDER_DEVELOPER_AGENT.txt\")",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(python -m pytest utils/tests/test_task_parser.py -q)",
+      "Bash(python -m utils.task_parser)",
+      "Bash(python -m pytest utils/tests/test_task_walk.py -q)",
+      "Bash(python -m utils.task_walk)",
+      "Bash(python -m pytest utils/tests/ -q --tb=line)",
+      "Bash(python -m pytest utils/tests/test_config_loader.py::TestConfigBasics::test_init_loads_config_file -v)",
+      "Bash(python -m pytest utils/tests/test_task_parser.py utils/tests/test_task_walk.py -v --tb=short)",
+      "Bash(python -c \"import yaml; data = yaml.safe_load\\(open\\('.gitmanager.yml'\\)\\); print\\('YAML valid'\\); print\\(f'Keys: {list\\(data.keys\\(\\)\\)}'\\); print\\(f'Protected branches: {data[\\\\\"protected_branches\\\\\"]}'\\); print\\(f'Commit pattern: {data[\\\\\"commit_message_pattern\\\\\"]}'\\); print\\(f'Sensitive patterns: {len\\(data[\\\\\"sensitive_patterns\\\\\"]\\)} rules'\\); print\\(f'Forbidden files: {len\\(data[\\\\\"forbidden_files\\\\\"]\\)} patterns'\\)\")",
+      "Bash(ls -la tmp*.cfg)",
+      "Bash(rm tmp8o2tbb49.cfg)",
+      "Bash(find . -type d -name __pycache__ -exec rm -rf {} +)"
+    ]
+  }
+}
