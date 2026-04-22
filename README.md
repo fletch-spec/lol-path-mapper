@@ -1,9 +1,37 @@
-# LOL Path Mapper
+# LoL Path Mapper
 
-## Introduction
-This project provides tools to map LOL (League of Legends) paths and data.
+Record and visualize champion movement paths from League of Legends live replays.
 
-For detailed documentation and setup instructions, visit the wiki:
+## Quick Start
 
-- [Quick Start Guide](https://github.com/fletch-spec/lol-path-mapper/wiki/Quick-Start)
-- [Tools Reference](https://github.com/fletch-spec/lol-path-mapper/wiki/Tools)
+1. **Install dependencies**: `pip install -r requirements.txt`
+2. **Enable Replay API**: Add `EnableReplayApi=1` to `game.cfg` (see [SETUP.md](docs/SETUP.md))
+3. **Place map image**: `summoners_rift.png` in the project root
+4. **Run**: `python record_path.py`
+5. **Follow prompts**:
+   - Wait for replay to load
+   - Select a player from the list
+   - Set follow camera on player (after speed up starts)
+   - Script records movement and renders path
+6. **Output**: Saved to `outputs/[MATCH_ID] champion - player (k/d/a).png`
+
+## Usage
+
+```bash
+python record_path.py
+```
+
+The script will:
+1. Wait for a replay to load in the LoL client
+2. List all players and prompt for selection
+3. Attach the camera to the selected champion
+4. Record their movement throughout the game
+5. Render a gradient path visualization (blue → red) onto the map
+
+## Documentation
+
+- **[docs/README.md](docs/README.md)** - Documentation index
+- **[docs/SETUP.md](docs/SETUP.md)** - Installation and configuration
+- **[docs/WORKFLOW.md](docs/WORKFLOW.md)** - Detailed workflow and troubleshooting
+- **[docs/API.md](docs/API.md)** - LoL Replay API reference
+- **[docs/DATA.md](docs/DATA.md)** - Data structures and formats
