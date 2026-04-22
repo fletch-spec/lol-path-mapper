@@ -1,9 +1,10 @@
-# Generated output images
-/outputs/
+# Generated output images (keep dir, ignore contents)
+/outputs/*
+!/outputs/.gitkeep
 
-# Cache (downloaded/generated game data)
-cache/*.json
-cache/api_key.txt
+# Cache (downloaded/generated game data) — keep dir, ignore contents
+/cache/*
+!/cache/.gitkeep
 
 # Replay files
 /replays/*.rofl

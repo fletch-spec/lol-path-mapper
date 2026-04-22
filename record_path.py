@@ -4,6 +4,7 @@ Usage:
     python record_path.py
 """
 
+import hashlib
 import json
 import os
 import sys
@@ -83,6 +84,22 @@ def get_game_data() -> Dict[str, Any]:
         return _get("/liveclientdata/allgamedata").get("gameData", {})
     except (ReplayNotAvailable, KeyError, TypeError, AttributeError):
         return {}
+
+
+def derive_match_id(game_data: Dict[str, Any], players: List[Dict[str, Any]], playback: Dict[str, Any]) -> str:
+    """Return a stable match id. Prefers the real gameId; falls back to a hash of the
+    roster + game length, which is reproducible across reloads of the same replay
+    but differs between separate matches (even with the same player/champion)."""
+    gid = game_data.get("gameId")
+    if gid and str(gid) not in ("0", "None"):
+        return str(gid)
+    roster = sorted(
+        f"{(p.get('riotIdGameName') or p.get('summonerName', '')).lower()}:{p.get('championName', '')}"
+        for p in players
+    )
+    length = int(playback.get("length", 0))
+    key = "|".join(roster) + f"|len={length}"
+    return hashlib.sha1(key.encode("utf-8")).hexdigest()[:10]
 
 
 def get_players() -> List[Dict[str, Any]]:
@@ -194,29 +211,50 @@ def collect_positions(
     return positions
 
 
-def save_positions(positions: List[Tuple[float, float, float]], champion_name: str, summoner_name: str = "") -> str:
+def _cache_key(match_id: str, champion_name: str, summoner_name: str) -> str:
+    """Filename-safe cache key scoped to match + champion + summoner.
+
+    Without match_id in the key, replaying a different game with the same champion
+    would collide with stale cache from an earlier session.
+    """
+    safe_sum = "".join(c for c in summoner_name if c.isalnum() or c in "_-") or "unknown"
+    return f"positions_{match_id}_{champion_name}_{safe_sum}.json"
+
+
+def save_positions(
+    positions: List[Tuple[float, float, float]],
+    match_id: str,
+    champion_name: str,
+    summoner_name: str = "",
+    kda: Optional[Tuple[int, int, int]] = None,
+) -> str:
     """Save positions to cache."""
     os.makedirs(CACHE_DIR, exist_ok=True)
-    path = os.path.join(CACHE_DIR, f"positions_{champion_name}.json")
+    path = os.path.join(CACHE_DIR, _cache_key(match_id, champion_name, summoner_name))
+    meta = {"match_id": match_id, "summoner": summoner_name, "champion": champion_name}
+    if kda is not None:
+        meta["kda"] = list(kda)
     with open(path, "w") as f:
-        json.dump({"meta": {"summoner": summoner_name, "champion": champion_name},
-                   "positions": positions}, f)
+        json.dump({"meta": meta, "positions": positions}, f)
     print(f"Saved position data -> {path}")
     return path
 
 
-def load_positions(champion_name: str) -> Optional[List[Tuple[float, float, float]]]:
-    """Load cached positions if they exist, otherwise return None."""
-    path = os.path.join(CACHE_DIR, f"positions_{champion_name}.json")
+def load_positions(
+    match_id: str,
+    champion_name: str,
+    summoner_name: str = "",
+) -> Optional[Dict[str, Any]]:
+    """Load cached entry ({positions, meta}) for this exact match/champion/summoner, else None."""
+    path = os.path.join(CACHE_DIR, _cache_key(match_id, champion_name, summoner_name))
     if not os.path.exists(path):
         return None
     try:
         with open(path) as f:
             data = json.load(f)
-        # Handle both new dict format and old raw-list format
         if isinstance(data, dict):
-            return data.get("positions", [])
-        return data
+            return data
+        return {"positions": data, "meta": {}}
     except (json.JSONDecodeError, ValueError):
         return None
 
@@ -238,35 +276,105 @@ def render_path(
     if not os.path.exists(map_image):
         raise FileNotFoundError(f"Map image not found: {map_image}")
 
-    img = Image.open(map_image)
-    draw = ImageDraw.Draw(img, "RGBA")
+    import math
 
-    # Draw path with gradient coloring: blue (t=0) to red (t=1)
-    if len(positions) > 1:
-        for i in range(len(positions) - 1):
-            x1, y1 = positions[i]
-            x2, y2 = positions[i + 1]
+    base = Image.open(map_image).convert("RGBA")
+    overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
 
+    # Convert game-world (x, z) to image pixels; flip Y (game Y goes up, image Y goes down).
+    # Empirical Y-shift: playfield sits ~140px higher than bounds predict at 2048px, scale with height.
+    W, H = base.size
+    MIN_X, MAX_X = -120.0, 14870.0
+    MIN_Y, MAX_Y = -120.0, 14980.0
+    Y_SHIFT = round(140 / 2048 * H)
+
+    def to_px(x: float, y: float) -> Tuple[float, float]:
+        px = (x - MIN_X) / (MAX_X - MIN_X) * W
+        py = (1.0 - (y - MIN_Y) / (MAX_Y - MIN_Y)) * H - Y_SHIFT
+        return (px, py)
+
+    # Split on jumps > 3000 game units (recalls / teleports / Twisted Fate ult etc.)
+    RECALL_THRESHOLD = 3000.0
+    segments: List[List[Tuple[float, float]]] = []
+    current: List[Tuple[float, float]] = []
+    prev: Optional[Tuple[float, float]] = None
+    for p in positions:
+        if prev is not None and math.hypot(p[0] - prev[0], p[1] - prev[1]) > RECALL_THRESHOLD:
+            if current:
+                segments.append(current)
+            current = [p]
+        else:
+            current.append(p)
+        prev = p
+    if current:
+        segments.append(current)
+
+    total_pts = sum(len(s) for s in segments)
+    print(f"Path segments: {len(segments)}  |  Total points: {total_pts}")
+
+    line_width = max(4, W // 300)
+
+    global_i = 0
+    denom = max(total_pts - 1, 1)
+
+    for seg in segments:
+        if len(seg) < 2:
+            global_i += len(seg)
+            continue
+        pixels = [to_px(x, y) for x, y in seg]
+        for i in range(len(pixels) - 1):
+            t = global_i / denom
             # Gradient: blue (0) → purple → red (1)
-            t = i / max(len(positions) - 1, 1)
             if t < 0.5:
-                r = int(128 * (t * 2))
-                g = 0
-                b = int(255 - 128 * (t * 2))
+                r = int(128 * (t * 2)); g = 0; b = int(255 - 128 * (t * 2))
             else:
-                r = int(128 + 127 * ((t - 0.5) * 2))
-                g = 0
-                b = int(128 - 128 * ((t - 0.5) * 2))
+                r = int(128 + 127 * ((t - 0.5) * 2)); g = 0; b = int(128 - 128 * ((t - 0.5) * 2))
 
-            draw.line([(x1, y1), (x2, y2)], fill=(r, g, b, 200), width=3)
+            draw.line([pixels[i], pixels[i + 1]], fill=(r, g, b, 230), width=line_width)
+            global_i += 1
+        global_i += 1
+
+    # Small arrows at teleport/recall boundaries, each pointing at the other end of the jump
+    arrow_len = max(line_width * 3, W // 160)
+    arrow_head = max(line_width * 1.5, W // 300)
+    arrow_w = max(2, line_width // 2)
+    arrow_color = (255, 255, 255, 240)
+    for a, b in zip(segments, segments[1:]):
+        p_from = to_px(*a[-1])
+        p_to = to_px(*b[0])
+        for origin, target in ((p_from, p_to), (p_to, p_from)):
+            dx, dy = target[0] - origin[0], target[1] - origin[1]
+            dist = math.hypot(dx, dy) or 1.0
+            ux, uy = dx / dist, dy / dist  # unit vector toward target
+            tip = (origin[0] + ux * arrow_len, origin[1] + uy * arrow_len)
+            # shaft
+            draw.line([origin, tip], fill=arrow_color, width=arrow_w)
+            # arrowhead: two short lines angled back ~30° from the shaft
+            for angle in (2.618, -2.618):  # ±150° from forward = 30° back-angle wings
+                cos_a, sin_a = math.cos(angle), math.sin(angle)
+                hx = ux * cos_a - uy * sin_a
+                hy = ux * sin_a + uy * cos_a
+                head_end = (tip[0] + hx * arrow_head, tip[1] + hy * arrow_head)
+                draw.line([tip, head_end], fill=arrow_color, width=arrow_w)
+
+    # Start (green) / end (red) markers
+    dot_r = max(line_width + 2, W // 250)
+    if segments and segments[0]:
+        sx, sy = to_px(*segments[0][0])
+        draw.ellipse([sx - dot_r, sy - dot_r, sx + dot_r, sy + dot_r], fill=(0, 200, 0, 230))
+    if segments and segments[-1]:
+        ex, ey = to_px(*segments[-1][-1])
+        draw.ellipse([ex - dot_r, ey - dot_r, ex + dot_r, ey + dot_r], fill=(255, 0, 0, 230))
+
+    result = Image.alpha_composite(base, overlay).convert("RGB")
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     if downscale > 1:
-        new_size = (img.width // downscale, img.height // downscale)
-        img = img.resize(new_size, Image.Resampling.LANCZOS)
+        result = result.resize((W // downscale, H // downscale), Image.Resampling.LANCZOS)
 
-    img.save(output_path)
+    result.save(output_path, optimize=True)
     print(f"Path rendered -> {output_path}")
 
 
@@ -292,11 +400,13 @@ def select_player(players: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def make_output_filename(match_id: str, champion: str, player_name: str, kda: Tuple[int, int, int]) -> str:
-    """Build filename: [MATCH_ID] champion - player (k/d/a).png"""
+    """Build filename: [MATCH_ID] champion - player (k/d/a).png or champion - player (k/d/a).png if unknown"""
     # Sanitize player name: keep only alphanumeric, spaces, hyphens, underscores
     safe_player = "".join(c for c in player_name if c.isalnum() or c in " _-").rstrip()
     k, d, a = kda
-    return f"[{match_id}] {champion} - {safe_player} ({k}/{d}/{a}).png"
+    if match_id == "UNKNOWN":
+        return f"{champion} - {safe_player} ({k}-{d}-{a}).png"
+    return f"[{match_id}] {champion} - {safe_player} ({k}-{d}-{a}).png"
 
 
 def main():
@@ -309,7 +419,6 @@ def main():
 
     # Get match ID from game data
     game_data = get_game_data()
-    match_id = str(game_data.get("gameId", "UNKNOWN"))
 
     try:
         players = get_players()
@@ -318,31 +427,54 @@ def main():
         print("  → Keep the replay playing and try again.")
         sys.exit(1)
 
+    try:
+        playback = get_playback()
+    except ReplayNotAvailable:
+        playback = {}
+
+    match_id = derive_match_id(game_data, players, playback)
+
     selected = select_player(players)
     champ = selected["championName"]
     summoner = selected.get("riotIdGameName") or selected.get("summonerName", "unknown")
 
-    # Extract KDA from player stats
-    stats = selected.get("stats", {})
-    kda = (stats.get("kills", 0), stats.get("deaths", 0), stats.get("assists", 0))
+    # Extract initial KDA from player scores (Live Client API uses "scores", not "stats")
+    scores = selected.get("scores") or selected.get("stats") or {}
+    kda = (scores.get("kills", 0), scores.get("deaths", 0), scores.get("assists", 0))
 
     print(f"\nTracking: {champ} ({summoner}) - KDA: {kda[0]}/{kda[1]}/{kda[2]}\n")
 
-    # Check if positions are already cached
-    cached_positions = load_positions(champ)
-    if cached_positions:
-        print(f"Found {len(cached_positions)} cached position samples for {champ}")
+    # Check if positions are already cached (scoped to this exact match + champion + summoner)
+    cached = load_positions(match_id, champ, summoner)
+    used_cache = False
+    if cached and cached.get("positions"):
+        print(f"Found {len(cached['positions'])} cached position samples for this match ({champ} / {summoner})")
         use_cached = input("Use cached positions? (y/n): ").strip().lower()
         if use_cached == 'y':
             print("Using cached positions.\n")
-            positions = cached_positions
+            positions = cached["positions"]
+            cached_kda = cached.get("meta", {}).get("kda")
+            if cached_kda and len(cached_kda) == 3:
+                kda = tuple(cached_kda)
+            used_cache = True
         else:
             print("Re-recording positions...\n")
+            print("⚠️  Keep the replay open and running until recording completes.\n")
             positions = collect_positions(champ, speed=16, summoner_name=summoner)
-            save_positions(positions, champ, summoner_name=summoner)
     else:
+        print("⚠️  Keep the replay open and running until recording completes.\n")
         positions = collect_positions(champ, speed=16, summoner_name=summoner)
-        save_positions(positions, champ, summoner_name=summoner)
+
+    # Fetch final KDA after recording completes (skip if we used cache — replay isn't at end)
+    if not used_cache:
+        try:
+            final_players = get_players()
+            final_selected = next((p for p in final_players if p["championName"] == champ), selected)
+            final_scores = final_selected.get("scores") or final_selected.get("stats") or {}
+            kda = (final_scores.get("kills", 0), final_scores.get("deaths", 0), final_scores.get("assists", 0))
+        except Exception:
+            pass
+        save_positions(positions, match_id, champ, summoner_name=summoner, kda=kda)
 
     # Use naming convention: [MATCH_ID] champion - player (k/d/a).png
     filename = make_output_filename(match_id, champ, summoner, kda)
@@ -352,6 +484,12 @@ def main():
     print(f"Path output: {output}")
     xy = [(x, y) for _, x, y in positions]
     render_path(DEFAULT_MAP, xy, output, downscale=4)
+
+    # Open the rendered image in the default viewer
+    try:
+        os.startfile(os.path.abspath(output))
+    except (AttributeError, OSError) as e:
+        print(f"(could not auto-open: {e})")
 
 
 if __name__ == "__main__":
