@@ -9,8 +9,10 @@
 ## Python Dependencies
 
 ```bash
-pip install requests urllib3 Pillow
+pip install -r requirements.txt
 ```
+
+(`requests`, `urllib3`, `Pillow`)
 
 ## Enable Replay API
 

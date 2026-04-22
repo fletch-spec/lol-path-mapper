@@ -13,7 +13,7 @@ Record and visualize champion movement paths from League of Legends live replays
    - Select a player from the list
    - Set follow camera on player (after speed up starts)
    - Script records movement and renders path
-6. **Output**: Saved to `outputs/[MATCH_ID] champion - player (k/d/a).png`
+6. **Output**: Saved to `outputs/[MATCH_ID] champion - player (k-d-a).png` (opens automatically on Windows)
 
 ## Usage
 
@@ -25,8 +25,8 @@ The script will:
 1. Wait for a replay to load in the LoL client
 2. List all players and prompt for selection
 3. Attach the camera to the selected champion
-4. Record their movement throughout the game
-5. Render a gradient path visualization (blue → red) onto the map
+4. Record their movement throughout the game (cached to disk — skip this step on re-run)
+5. Render a gradient path (blue → red) with white arrows marking each recall/teleport, and start/end dots
 
 ## Documentation
 

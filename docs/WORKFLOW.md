@@ -26,7 +26,7 @@ wait_for_replay()
 
 ```
 players = get_players()
-selected = select_player(players, args.player)
+selected = select_player(players)
 ```
 
 Displays:
@@ -37,10 +37,7 @@ Players:
    ...
 ```
 
-Selection modes:
-- **Interactive** (no `--player` arg): prompts for a number
-- **By index** (`--player 3`): selects player #3
-- **By name** (`--player Ahri`): substring match on champion or summoner name
+The script prompts interactively for a player number — there are no CLI flags.
 
 ### 3. Camera Attachment & Verification
 
@@ -66,7 +63,7 @@ positions = collect_positions(champion_name, speed=16, summoner_name=summoner_na
 
 The script:
 1. Rewinds to t=0.5s and pauses
-2. Sets playback speed to `--speed` (default 16×) and unpauses
+2. Sets playback speed to 16× and unpauses
 3. Polls `/replay/render` → `cameraPosition` every 0.1 seconds
 4. Records `(game_time, x, y)` for each unique game_time
 5. Continues until replay reaches end (game_length)
@@ -81,15 +78,18 @@ Done: 1523 samples collected.
 ### 5. Save Positions
 
 ```
-save_positions(positions, champion_name, summoner_name)
+save_positions(positions, match_id, champion_name, summoner_name, kda=kda)
 ```
 
-Writes to `cache/positions_{champion_name}.json`:
+Writes to `cache/positions_{match_id}_{champion_name}_{summoner}.json`. The match id is the Live Client `gameId` when available, otherwise a 10-char sha1 hash of the roster + game length (stable across reloads of the same replay, different across different matches).
+
 ```json
 {
   "meta": {
+    "match_id": "f2d548e465",
     "summoner": "Summoner Name",
-    "champion": "Ahri"
+    "champion": "Ahri",
+    "kda": [5, 2, 12]
   },
   "positions": [
     [0.0, 8040.5, 145.3],
@@ -99,6 +99,8 @@ Writes to `cache/positions_{champion_name}.json`:
 }
 ```
 
+On re-run against the same replay, the script detects the cached file and offers to skip re-recording.
+
 ### 6. Render Path
 
 ```
@@ -107,16 +109,17 @@ render_path(map_image, xy_positions, output_path, downscale=4)
 
 The script:
 1. Loads the Summoner's Rift map image
-2. Draws lines between consecutive positions with a gradient color:
-   - **Blue** (early game)
-   - **Purple** (mid)
-   - **Red** (late game)
-3. Downscales the image 4× (8192×8192 → 2048×2048)
-4. Saves to `outputs/[MATCH_ID] champion - player (k/d/a).png`
+2. Converts each `(game_x, game_z)` to image pixels — scaled by image size, Y-axis flipped, with a small empirical Y-shift so the path lines up with the map's playfield
+3. Splits the path into segments on jumps > 3000 game units (recalls / teleports / Unleashed Flash etc.)
+4. Draws a gradient line per segment — **blue** (early) → **purple** → **red** (late) — stroke width scales with image width
+5. Draws two small white arrows at each segment boundary, each pointing at the other end of the jump
+6. Draws a green dot at the very first sample and a red dot at the very last
+7. Downscales 4× (8192×8192 → 2048×2048) and saves
+8. Opens the image in the default viewer (Windows: `os.startfile`)
 
 **Example output path**:
 ```
-outputs/[OC1_697009636] Ahri - PlayerName (5/2/12).png
+outputs/[f2d548e465] Ahri - PlayerName (5-2-12).png
 ```
 
 ## Troubleshooting
@@ -151,12 +154,12 @@ The replay closed while the script was running.
 The camera attachment failed.
 
 **Possible causes**:
-- Champion name doesn't match (try a different format or use index)
+- Champion name not recognized by the API (the script retries with lowercase / no-spaces / the summoner name, but some edge cases slip through)
 - Replay paused or crashed
 - Camera still initializing (let it run a moment longer)
 
 **Fix**:
-- Re-run and try `--player <index>` instead of name
+- Re-run and pick a different player number at the prompt
 
 ### Camera position is 0,0 or unchanged
 
@@ -177,4 +180,3 @@ The script can't find `summoners_rift.png`.
 
 **Fix**:
 - Place the map image in the project root
-- Or use `--map <path>` to specify a custom path

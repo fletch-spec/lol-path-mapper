@@ -1,14 +1,18 @@
 # Data Structures & Formats
 
-## Positions Cache (`cache/positions_*.json`)
+## Positions Cache
 
-Format: JSON with metadata wrapper
+Filename: `cache/positions_{match_id}_{champion}_{summoner}.json`
+
+The key includes `match_id` so two different replays of the same champion (or same player) don't collide. `match_id` is the Live Client `gameId` when non-zero; otherwise a 10-char sha1 hash of the sorted roster + game length (stable across reloads of the same replay).
 
 ```json
 {
   "meta": {
+    "match_id": "f2d548e465",
     "summoner": "Player Name",
-    "champion": "Ahri"
+    "champion": "Ahri",
+    "kda": [5, 2, 12]
   },
   "positions": [
     [game_time, x, y],
@@ -20,8 +24,10 @@ Format: JSON with metadata wrapper
 
 ### Fields
 
+- **meta.match_id** (string): See above
 - **meta.summoner** (string): Summoner name (from `riotIdGameName` or `summonerName`)
 - **meta.champion** (string): Champion name (e.g., "Ahri", "Nunu and Willump")
+- **meta.kda** (array of 3 ints, optional): `[kills, deaths, assists]` snapshot taken after the recording finished, so cached re-renders get correct stats without replaying the game
 - **positions** (array): List of movement samples
 
 ### Position Tuple
@@ -43,8 +49,10 @@ Each entry is a 3-tuple: `[game_time, x, y]`
 ```json
 {
   "meta": {
+    "match_id": "f2d548e465",
     "summoner": "Ahri Main",
-    "champion": "Ahri"
+    "champion": "Ahri",
+    "kda": [5, 2, 12]
   },
   "positions": [
     [0.0, 8040.5, 145.3],
@@ -69,10 +77,12 @@ From `/liveclientdata/playerlist`:
   "team": "ORDER",
   "skinName": "Spirit Blossom Ahri",
   "level": 18,
-  "stats": {
+  "scores": {
     "kills": 5,
     "deaths": 2,
-    "assists": 12
+    "assists": 12,
+    "creepScore": 180,
+    "wardScore": 12.3
   }
 }
 ```
@@ -84,6 +94,7 @@ From `/liveclientdata/playerlist`:
 - **riotIdTagLine** (string): Riot ID tag (e.g., "NA1", "EUW1")
 - **summonerName** (string): Legacy summoner name (fallback if Riot ID not available)
 - **team** (string): `"ORDER"` (blue team) or `"CHAOS"` (red team)
+- **scores** (object): `kills`, `deaths`, `assists`, etc. — note: this field is `scores`, not `stats`. The script falls back to `stats` defensively for older API versions.
 
 ## Playback State
 
@@ -144,22 +155,34 @@ The Summoner's Rift map is ~14,500 × 14,500 units.
 
 ## Output Image
 
-Saved as PNG to `outputs/[MATCH_ID] champion - player (k/d/a).png`.
+Saved as PNG to `outputs/[MATCH_ID] champion - player (k-d-a).png`.
 
 **Format**:
-- RGBA PNG
+- RGB PNG (RGBA overlay composited onto the map, then flattened)
 - Downscaled 4× from 8192×8192 → 2048×2048
-- Path drawn as gradient lines (blue → red)
-- Line width: 3 pixels
-- Line opacity: ~80%
+- Path drawn as gradient lines (blue → red) per segment
+- Line width: `max(4, img_width // 300)` pixels (≈27px at 8192, ≈7px after downscale)
+- Line opacity: 230/255 (~90%)
+- Segments split on jumps > 3000 game units (recalls/teleports)
+- Small white arrows at each segment boundary, each pointing at the other end of the jump
+- Green dot at first sample, red dot at last sample
+
+### Coordinate transform
+
+Game world `(x, z)` → image pixels:
+
+```
+px = (x - MIN_X) / (MAX_X - MIN_X) * width
+py = (1 - (z - MIN_Y) / (MAX_Y - MIN_Y)) * height - Y_SHIFT
+```
+
+Where `MIN_X/MAX_X = -120/14870`, `MIN_Y/MAX_Y = -120/14980`, and `Y_SHIFT = round(140 / 2048 * height)` — an empirical correction because the playfield sits ~140px higher than the raw bounds predict at 2048px resolution.
 
 ## Error Cases
 
 ### Corrupted positions file
 
-If `cache/positions_*.json` is malformed:
-- Script exits with "Positions file could not be read"
-- **Fix**: Delete the file and re-record
+If a `cache/positions_*.json` file is malformed, `load_positions` returns `None` and the script falls through to re-recording. Delete the file manually if you want to force a clean re-record.
 
 ### Missing coordinates
 

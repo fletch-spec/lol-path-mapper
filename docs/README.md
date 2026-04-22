@@ -6,7 +6,7 @@
 2. Run the script: `python record_path.py`
 3. Open a replay in the LoL client
 4. Select a player when prompted
-5. Output saved to `outputs/[MATCH_ID] champion - player (k/d/a).png`
+5. Output saved to `outputs/[MATCH_ID] champion - player (k-d-a).png`
 
 ## Workflow
 
@@ -16,9 +16,9 @@ The script:
 2. **Lists players** and prompts for interactive selection
 3. **Attaches** the replay camera to the selected champion
 4. **Records** their movement throughout the game at 16× speed (~77 seconds for a 20-minute game)
-5. **Saves** position data to `cache/positions_{champion}.json`
-6. **Renders** a gradient path visualization onto the map (blue = early, red = late)
-7. **Outputs** the final image to `outputs/[MATCH_ID] champion - player (k/d/a).png`
+5. **Saves** position data to `cache/positions_{match_id}_{champion}_{summoner}.json` (reused on re-runs of the same match)
+6. **Renders** a gradient path onto the map (blue = early, red = late), splitting on recalls/teleports and drawing small white arrows at each jump boundary
+7. **Outputs** the final image to `outputs/[MATCH_ID] champion - player (k-d-a).png`
 
 ## Documentation
 
